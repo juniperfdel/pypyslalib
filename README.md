@@ -4,13 +4,7 @@
 
 ## Introduction
 An attempt to convert the very good [SLALIB](http://star-www.rl.ac.uk/docs/sun67.htx/sun67.html) into 
-pure python without any wrappers using [pyslalib](https://github.com/scottransom/pyslalib) as a base. The reasons for this
-conversion is:
-1. gfortran is not very portable and requires some workarounds to get working on Windows
-2. Moving the code into a more readable format allows people to understand what specifically it is doing
-3. Python has some really nice features in it that make the library simpler
-4. As we move into the future, fortran 77 is probably not going to follow us very well.
-5. If Numpy is effectively utilized, then the slow-down from moving from fortran is minimized while gaining the benefits.  
+pure python without any wrappers using [pyslalib](https://github.com/scottransom/pyslalib) as a base.
 
 ### Workflow
 The workflow I created is using the file `convert.py` to do common string conversions from fortran to python then 
