@@ -23,6 +23,7 @@ line_replace = {
 	"sqrt": (r"SQRT", r"np.sqrt"), "sign": (r"SIGN", r"np.sign"),
 	"nint": (r"NINT", r"np.rint"), "abs": (r"ABS", r"np.abs"),
 	"cos": (r"COS\(", r"np.cos("), "sin": (r"SIN\(", r"np.sin("),
+	"tan": (r"TAN\(", r"np.tan("), "atan2": (r"ATAN2\(", r"np.arctan2("),
 	"mod": (r"MOD", r"np.mod"), "setter": (r"(\w+)\((\d+)\) = ", r"\g<1>[\g<2>] = "),
 	"max": (r"MAX", r"np.maximum"), "end_file": ("END", ""), "implicit_none": ("IMPLICIT NONE", ""),
 	"double_prec": (r"DOUBLE PRECISION (.+)", r""), "int": (r"INTEGER (.+)", r""),
