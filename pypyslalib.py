@@ -670,12 +670,9 @@ class SLALib:
 		# Seconds of time to radians
 
 		# Julian centuries since J2000.
-		if date < ut:
-			d1 = date
-			d2 = ut
-		else:
-			d1 = ut
-			d2 = date
+		date_lt_ut = date < ut
+		d1 = np.where(date_lt_ut, date, ut)
+		d2 = np.where(date_lt_ut, ut, date)
 
 		T = (d1 + (d2 - 51544.5e0)) / 36525e0
 
