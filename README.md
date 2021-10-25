@@ -1,6 +1,6 @@
 # PyPySLALib
 
-### Number converted: 18 /  209
+### Number converted: 28 /  209
 
 ## Introduction
 An attempt to convert the very good [SLALIB](http://star-www.rl.ac.uk/docs/sun67.htx/sun67.html) into 
