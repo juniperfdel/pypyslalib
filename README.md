@@ -30,7 +30,3 @@ The original `SLALIB` was released with [GNUv2](https://www.gnu.org/licenses/old
 in the GNUv2 I am assuming `pyslalib` was released under GNUv2 as well, and I am releasing this code under 
 GNUv3. The various `LICENSE` files are for each set of code being used and manipulated. I also took the liberty of 
 updating the `SLALIB` license to the modern GNUv2 as opposed to the very outdated version (It had the wrong address).
-
-## Help
-Feel free to help out, it doesn't take much time especially if you are already have a passing familiarity with python,
-just ensure the formatting follows everything else and make a pull request.
