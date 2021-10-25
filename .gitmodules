@@ -1,0 +1,3 @@
+[submodule "pyslalib"]
+	path = pyslalib
+	url = https://github.com/scottransom/pyslalib.git
