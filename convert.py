@@ -35,7 +35,7 @@ line_replace = {
 	"max": (r"MAX", r"np.maximum"), "min": (r"MIN", "np.minimum"), "end_file": ("END", ""),
 	"implicit_none": ("IMPLICIT NONE", ""),
 	"double_prec": (r"DOUBLE PRECISION (.+)", r""), "int": (r"INTEGER (.+)", r""),
-	"double_constant": (r"(\d+)D(-?)\+?0*(\d+)", r"\g<1>e\g<2>\g<3>")
+	"double_constant": (r"(\d+)(?:D|E)(-?)\+?0*(\d+)", r"\g<1>e\g<2>\g<3>")
 }
 
 
