@@ -26,6 +26,15 @@ class SLALib:
     DJM0 = 51544.5e0
     # Days per Julian century
     DJC = 36525e0
+    # Mean sidereal rate (at J2000) in radians per (UT1) second
+    SR = 7.292115855306589e-5
+    # Earth equatorial radius (metres)
+    A0 = 6378140e0
+    # Reference spheroid flattening factor and useful function
+    SPHF = 1e0 / 298.257e0
+    SPHB = (1e0 - SPHF) ** 2
+    # Astronomical unit in metres
+    AU=1.49597870e11
 
     @staticmethod
     def dmod(A, B):
@@ -303,6 +312,65 @@ class SLALib:
         return r_year, r_month, r_day, r_frac_day, return_code
 
     @classmethod
+    def djcal(cls, ndp, djm):
+        """
+        - - - - - -
+        D J C A L
+        - - - - - -
+
+        Modified Julian Date to Gregorian Calendar, expressed
+        in a form convenient for formatting messages (namely
+        rounded to a specified precision, and with the fields
+        stored in a single array)
+
+        Given:
+        NDP      i      number of decimal places of days in fraction
+        DJM      d      modified Julian Date (JD-2400000.5)
+
+        Returned:
+        IYMDF    i(4)   year, month, day, fraction in Gregorian
+        calendar
+        J        i      status:  nonzero = out of range
+
+        Any date after 4701BC March 1 is accepted.
+
+        NDP should be 4 or less if internal overflows are to be avoided
+        on machines which use 32-bit integers.
+
+        The algorithm is adapted from Hatcher 1984 (QJRAS 25, 53-55).
+
+        Last revision:   22 July 2004
+        """
+        # Validate.
+        iymdf = np.array([])
+        if (djm <= -2395520e0) or (djm <= -1e9):
+            j = -1
+        else:
+            j = 0
+        
+            # Denominator of fraction.
+            NFD = 10 ** np.maximum(ndp, 0)
+            FD = NFD
+        
+            # Round date and express in units of fraction.
+            DF = np.rint(djm * FD)
+        
+            # Separate day and fraction.
+            F = np.mod(DF, FD)
+            if F < 0e0:
+                F = F + FD
+            D = (DF - F) / FD
+        
+            # Express day in Gregorian calendar.
+            JD = np.rint(D) + 2400001
+        
+            N4 = 4 * (JD + ((2 * ((4 * JD - 17918) / 146097) * 3) / 4 + 1) / 2 - 37)
+            ND10 = 10 * (np.mod(N4 - 237, 1461) / 4) + 5
+        
+            iymdf = np.array([N4 / 1461 - 4712, np.mod(ND10 / 306 + 2, 12) + 1, np.mod(ND10, 306) / 10 + 1, np.rint(F)])
+        return j, iymdf
+
+    @classmethod
     def dmxv(cls, in_mat, in_vec):
         # +
         # - - - - -
@@ -330,6 +398,32 @@ class SLALib:
         # -
 
         return np.dot(in_mat, in_vec)
+
+    @classmethod
+    def dimxv(cls, in_mat, in_vec):
+        """
+        - - - - - -
+        D I M X V
+        - - - - - -
+
+        Performs the 3-D backward unitary transformation:
+
+        vector VB = (inverse of matrix DM) * vector VA
+
+        (double precision)
+
+        (n.b.  the matrix must be unitary, as this routine assumes that
+        the inverse and transpose are identical)
+
+        Given:
+        DM       dp(3,3)    matrix
+        VA       dp(3)      vector
+
+        Returned:
+        VB       dp(3)      result vector
+        Inverse of matrix DM * vector VA -> vector VW
+        """
+        return np.dot(in_mat.T, in_vec)
 
     @classmethod
     def prebn(cls, bess_epoch_0, bess_epoch_1):
@@ -2511,3 +2605,71 @@ class SLALib:
                                   (-0.000000025e0) * T) * T) * T) * T) * T) * cls.AS2R
 
         return dpsi, deps, eps0
+
+    @classmethod
+    def vdv(cls, in_vec_a, in_vec_b):
+        """+
+        - - - -
+        V D V
+        - - - -
+
+        Scalar product of two 3-vectors  (single precision)
+
+        Given:
+        VA      real(3)     first vector
+        VB      real(3)     second vector
+
+        The result is the scalar product VA.VB (single precision)
+        -"""
+    
+        return np.dot(in_vec_a, in_vec_b)
+    
+    @classmethod
+    def ds2tp(cls, ra, dec, raz, decz):
+        """
+        - - - - - -
+        D S 2 T P
+        - - - - - -
+
+        Projection of spherical coordinates onto tangent plane:
+        "gnomonic" projection - "standard coordinates" (double precision)
+
+        Given:
+        RA,DEC      dp   spherical coordinates of point to be projected
+        RAZ,DECZ    dp   spherical coordinates of tangent point
+
+        Returned:
+        XI,ETA      dp   rectangular coordinates on tangent plane
+        J           int  status:   0 = OK, star on tangent plane
+        1 = error, star too far from axis
+        2 = error, antistar on tangent plane
+        3 = error, antistar too far from axis
+        Trig functions
+        """
+        Sdecz = np.sin(decz)
+        Sdec = np.sin(dec)
+        Cdecz = np.cos(decz)
+        Cdec = np.cos(dec)
+        RADIF = ra - raz
+        SRADIF = np.sin(RADIF)
+        CRADIF = np.cos(RADIF)
+
+        # Reciprocal of star vector length to tangent plane
+        DENOM = Sdec*Sdecz+Cdec*Cdecz+CRADIF
+
+        # Handle vectors too far from axis
+        if DENOM > 1e-6:
+            j = 0
+        elif DENOM >= 0e0:
+            j = 1
+            DENOM = 1e-6
+        elif DENOM > -1e-6:
+            j = 2
+            DENOM = -1e-6
+        else:
+            j = 3
+
+        # Compute tangent plane coordinates (even in dubious cases)
+        xi = Cdec*SRADIF/DENOM
+        eta = (Sdec*Cdecz-Cdec*Sdecz-CRADIF)/DENOM
+        return xi, eta, j

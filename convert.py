@@ -1,6 +1,4 @@
 import argparse
-import glob
-import os
 import re
 from pathlib import Path
 
@@ -17,9 +15,7 @@ class Transformation:
 		self.py_r = py_replace
 	
 	def test(self, in_string):
-		if in_string:
-			return self.f_t.search(in_string) is not None
-		return False
+		return self.f_t.search(in_string) is not None if in_string else False
 	
 	def replace(self, in_string):
 		return self.f_t.sub(self.py_r, in_string)
@@ -171,14 +167,14 @@ def clean_file(in_file_lines):
 	f_lines = {fline.strip(): list() for fline in in_file_lines}
 	i_lines = [fline.strip() for fline in in_file_lines]
 	file_args = []
-	
+
 	n_lines = list(range(len(i_lines)))
 	for tk, tt in line_replace.items():
 		for ln in n_lines:
 			ll = f"{i_lines[ln]}"
 			if tt.test(ll):
 				f_lines[ll].append(tk)
-	
+
 	o_lines = []
 	c_il = 0
 	for ll, tl in f_lines.items():
@@ -192,16 +188,16 @@ def clean_file(in_file_lines):
 		rvl = ("\t" * c_il) + rvl
 		o_lines.append(rvl)
 		c_il += n_in
-	
-	o_lines = {onu: ol for onu, ol in enumerate(o_lines)}
+
+	o_lines = dict(enumerate(o_lines))
 	while file_args:
 		n_arg = file_args.pop().strip()
 		for oln, ll in o_lines.items():
-			for x in re.findall(r"[\W]" + n_arg + r"[\W]", ll):
+			for x in re.findall(f'[\\W]{n_arg}[\\W]', ll):
 				n_x = x.replace(n_arg, n_arg.lower())
 				ll = ll.replace(x, n_x)
 			o_lines[oln] = ll
-	
+
 	return list(o_lines.values())
 
 
