@@ -1,0 +1,2171 @@
+{
+  "addet": {
+    "in": [
+      "rm",
+      "dm",
+      "eq"
+    ],
+    "out": [
+      "rc",
+      "dc"
+    ]
+  },
+  "afin": {
+    "in": [
+      "string_bn",
+      "iptr"
+    ],
+    "out": [
+      "iptr",
+      "a",
+      "j"
+    ]
+  },
+  "airmas": {
+    "in": [
+      "zd"
+    ],
+    "out": [
+      "sla_airmas"
+    ]
+  },
+  "altaz": {
+    "in": [
+      "ha",
+      "dec",
+      "phi"
+    ],
+    "out": [
+      "az",
+      "azd",
+      "azdd",
+      "el",
+      "eld",
+      "eldd",
+      "pa",
+      "pad",
+      "padd"
+    ]
+  },
+  "amp": {
+    "in": [
+      "ra",
+      "da",
+      "date",
+      "eq"
+    ],
+    "out": [
+      "rm",
+      "dm"
+    ]
+  },
+  "ampqk": {
+    "in": [
+      "ra",
+      "da",
+      "amprms"
+    ],
+    "out": [
+      "rm",
+      "dm"
+    ]
+  },
+  "aop": {
+    "in": [
+      "rap",
+      "dap",
+      "date",
+      "dut",
+      "elongm",
+      "phim",
+      "hm",
+      "xp",
+      "yp",
+      "tdk",
+      "pmb",
+      "rh",
+      "wl",
+      "tlr"
+    ],
+    "out": [
+      "aob",
+      "zob",
+      "hob",
+      "dob",
+      "rob"
+    ]
+  },
+  "aoppa": {
+    "in": [
+      "date",
+      "dut",
+      "elongm",
+      "phim",
+      "hm",
+      "xp",
+      "yp",
+      "tdk",
+      "pmb",
+      "rh",
+      "wl",
+      "tlr"
+    ],
+    "out": [
+      "aoprms"
+    ]
+  },
+  "aoppat": {
+    "in": [
+      "date",
+      "aoprms"
+    ],
+    "out": [
+      "aoprms"
+    ]
+  },
+  "aopqk": {
+    "in": [
+      "rap",
+      "dap",
+      "aoprms"
+    ],
+    "out": [
+      "aob",
+      "zob",
+      "hob",
+      "dob",
+      "rob"
+    ]
+  },
+  "atmdsp": {
+    "in": [
+      "tdk",
+      "pmb",
+      "rh",
+      "wl1",
+      "a1",
+      "b1",
+      "wl2"
+    ],
+    "out": [
+      "a2",
+      "b2"
+    ]
+  },
+  "_atms": {
+    "in": [
+      "rt",
+      "tt",
+      "dnt",
+      "gamal",
+      "r",
+      "dn",
+      "rdndr"
+    ],
+    "out": []
+  },
+  "_atmt": {
+    "in": [
+      "r0",
+      "t0",
+      "alpha",
+      "gamm2",
+      "delm2",
+      "c1",
+      "c2",
+      "c3",
+      "c4",
+      "c5",
+      "c6",
+      "r",
+      "t",
+      "dn",
+      "rdndr"
+    ],
+    "out": []
+  },
+  "av2m": {
+    "in": [
+      "axvec"
+    ],
+    "out": [
+      "rmat"
+    ]
+  },
+  "bear": {
+    "in": [
+      "a1",
+      "b1",
+      "a2",
+      "b2"
+    ],
+    "out": [
+      "sla_bear"
+    ]
+  },
+  "caf2r": {
+    "in": [
+      "ideg",
+      "iamin",
+      "asec"
+    ],
+    "out": [
+      "rad",
+      "j"
+    ]
+  },
+  "caldj": {
+    "in": [
+      "iy",
+      "im",
+      "id"
+    ],
+    "out": [
+      "djm",
+      "j"
+    ]
+  },
+  "calyd": {
+    "in": [
+      "iy",
+      "im",
+      "id"
+    ],
+    "out": [
+      "ny",
+      "nd",
+      "j"
+    ]
+  },
+  "cc2s": {
+    "in": [
+      "v"
+    ],
+    "out": [
+      "a",
+      "b"
+    ]
+  },
+  "cc62s": {
+    "in": [
+      "v"
+    ],
+    "out": [
+      "a",
+      "b",
+      "r",
+      "ad",
+      "bd",
+      "rd"
+    ]
+  },
+  "cd2tf": {
+    "in": [
+      "ndp",
+      "days"
+    ],
+    "out": [
+      "sign",
+      "ihmsf"
+    ]
+  },
+  "cldj": {
+    "in": [
+      "iy",
+      "im",
+      "id"
+    ],
+    "out": [
+      "djm",
+      "j"
+    ]
+  },
+  "clyd": {
+    "in": [
+      "iy",
+      "im",
+      "id"
+    ],
+    "out": [
+      "ny",
+      "nd",
+      "jstat"
+    ]
+  },
+  "combn": {
+    "in": [
+      "nsel",
+      "ncand",
+      "list"
+    ],
+    "out": [
+      "list",
+      "j"
+    ]
+  },
+  "cr2af": {
+    "in": [
+      "ndp",
+      "angle"
+    ],
+    "out": [
+      "sign",
+      "idmsf"
+    ]
+  },
+  "cr2tf": {
+    "in": [
+      "ndp",
+      "angle"
+    ],
+    "out": [
+      "sign",
+      "ihmsf"
+    ]
+  },
+  "cs2c6": {
+    "in": [
+      "a",
+      "b",
+      "r",
+      "ad",
+      "bd",
+      "rd"
+    ],
+    "out": [
+      "v"
+    ]
+  },
+  "cs2c": {
+    "in": [
+      "a",
+      "b"
+    ],
+    "out": [
+      "v"
+    ]
+  },
+  "ctf2d": {
+    "in": [
+      "ihour",
+      "imin",
+      "sec"
+    ],
+    "out": [
+      "days",
+      "j"
+    ]
+  },
+  "ctf2r": {
+    "in": [
+      "ihour",
+      "imin",
+      "sec"
+    ],
+    "out": [
+      "rad",
+      "j"
+    ]
+  },
+  "daf2r": {
+    "in": [
+      "ideg",
+      "iamin",
+      "asec"
+    ],
+    "out": [
+      "rad",
+      "j"
+    ]
+  },
+  "dafin": {
+    "in": [
+      "string_bn",
+      "iptr"
+    ],
+    "out": [
+      "iptr",
+      "a",
+      "j"
+    ]
+  },
+  "dat": {
+    "in": [
+      "utc"
+    ],
+    "out": [
+      "sla_dat"
+    ]
+  },
+  "dav2m": {
+    "in": [
+      "axvec"
+    ],
+    "out": [
+      "rmat"
+    ]
+  },
+  "dbear": {
+    "in": [
+      "a1",
+      "b1",
+      "a2",
+      "b2"
+    ],
+    "out": [
+      "sla_dbear"
+    ]
+  },
+  "dbjin": {
+    "in": [
+      "string_bn",
+      "nstrt"
+    ],
+    "out": [
+      "nstrt",
+      "dreslt",
+      "j1",
+      "j2"
+    ]
+  },
+  "dc62s": {
+    "in": [
+      "v"
+    ],
+    "out": [
+      "a",
+      "b",
+      "r",
+      "ad",
+      "bd",
+      "rd"
+    ]
+  },
+  "dcc2s": {
+    "in": [
+      "v"
+    ],
+    "out": [
+      "a",
+      "b"
+    ]
+  },
+  "dcmpf": {
+    "in": [
+      "coeffs"
+    ],
+    "out": [
+      "xz",
+      "yz",
+      "xs",
+      "ys",
+      "perp",
+      "orient"
+    ]
+  },
+  "dcs2c": {
+    "in": [
+      "a",
+      "b"
+    ],
+    "out": [
+      "v"
+    ]
+  },
+  "dd2tf": {
+    "in": [
+      "ndp",
+      "days"
+    ],
+    "out": [
+      "sign",
+      "ihmsf"
+    ]
+  },
+  "de2h": {
+    "in": [
+      "ha",
+      "dec",
+      "phi"
+    ],
+    "out": [
+      "az",
+      "el"
+    ]
+  },
+  "deuler": {
+    "in": [
+      "order",
+      "phi",
+      "theta",
+      "psi"
+    ],
+    "out": [
+      "rmat"
+    ]
+  },
+  "dfltin": {
+    "in": [
+      "string_bn",
+      "nstrt"
+    ],
+    "out": [
+      "nstrt",
+      "dreslt",
+      "jflag"
+    ]
+  },
+  "dh2e": {
+    "in": [
+      "az",
+      "el",
+      "phi"
+    ],
+    "out": [
+      "ha",
+      "dec"
+    ]
+  },
+  "dimxv": {
+    "in": [
+      "dm",
+      "va"
+    ],
+    "out": [
+      "vb"
+    ]
+  },
+  "djcal": {
+    "in": [
+      "ndp",
+      "djm"
+    ],
+    "out": [
+      "iymdf",
+      "j"
+    ]
+  },
+  "djcl": {
+    "in": [
+      "djm"
+    ],
+    "out": [
+      "iy",
+      "im",
+      "id",
+      "fd",
+      "j"
+    ]
+  },
+  "dm2av": {
+    "in": [
+      "rmat"
+    ],
+    "out": [
+      "axvec"
+    ]
+  },
+  "dmat": {
+    "in": [
+      "n",
+      "a",
+      "y",
+      "iw"
+    ],
+    "out": [
+      "a",
+      "y",
+      "d",
+      "jf",
+      "iw"
+    ]
+  },
+  "dmoon": {
+    "in": [
+      "date"
+    ],
+    "out": [
+      "pv"
+    ]
+  },
+  "dmxm": {
+    "in": [
+      "a",
+      "b"
+    ],
+    "out": [
+      "c"
+    ]
+  },
+  "dmxv": {
+    "in": [
+      "dm",
+      "va"
+    ],
+    "out": [
+      "vb"
+    ]
+  },
+  "dpav": {
+    "in": [
+      "v1",
+      "v2"
+    ],
+    "out": [
+      "sla_dpav"
+    ]
+  },
+  "dr2af": {
+    "in": [
+      "ndp",
+      "angle"
+    ],
+    "out": [
+      "sign",
+      "idmsf"
+    ]
+  },
+  "dr2tf": {
+    "in": [
+      "ndp",
+      "angle"
+    ],
+    "out": [
+      "sign",
+      "ihmsf"
+    ]
+  },
+  "drange": {
+    "in": [
+      "angle"
+    ],
+    "out": [
+      "sla_drange"
+    ]
+  },
+  "dranrm": {
+    "in": [
+      "angle"
+    ],
+    "out": [
+      "sla_dranrm"
+    ]
+  },
+  "ds2c6": {
+    "in": [
+      "a",
+      "b",
+      "r",
+      "ad",
+      "bd",
+      "rd"
+    ],
+    "out": [
+      "v"
+    ]
+  },
+  "ds2tp": {
+    "in": [
+      "ra",
+      "dec",
+      "raz",
+      "decz"
+    ],
+    "out": [
+      "xi",
+      "eta",
+      "j"
+    ]
+  },
+  "dsep": {
+    "in": [
+      "a1",
+      "b1",
+      "a2",
+      "b2"
+    ],
+    "out": [
+      "sla_dsep"
+    ]
+  },
+  "dsepv": {
+    "in": [
+      "v1",
+      "v2"
+    ],
+    "out": [
+      "sla_dsepv"
+    ]
+  },
+  "dt": {
+    "in": [
+      "epoch"
+    ],
+    "out": [
+      "sla_dt"
+    ]
+  },
+  "dtf2d": {
+    "in": [
+      "ihour",
+      "imin",
+      "sec"
+    ],
+    "out": [
+      "days",
+      "j"
+    ]
+  },
+  "dtf2r": {
+    "in": [
+      "ihour",
+      "imin",
+      "sec"
+    ],
+    "out": [
+      "rad",
+      "j"
+    ]
+  },
+  "dtp2s": {
+    "in": [
+      "xi",
+      "eta",
+      "raz",
+      "decz"
+    ],
+    "out": [
+      "ra",
+      "dec"
+    ]
+  },
+  "dtp2v": {
+    "in": [
+      "xi",
+      "eta",
+      "v0"
+    ],
+    "out": [
+      "v"
+    ]
+  },
+  "dtps2c": {
+    "in": [
+      "xi",
+      "eta",
+      "ra",
+      "dec"
+    ],
+    "out": [
+      "raz1",
+      "decz1",
+      "raz2",
+      "decz2",
+      "n"
+    ]
+  },
+  "dtpv2c": {
+    "in": [
+      "xi",
+      "eta",
+      "v"
+    ],
+    "out": [
+      "v01",
+      "v02",
+      "n"
+    ]
+  },
+  "dtt": {
+    "in": [
+      "utc"
+    ],
+    "out": [
+      "sla_dtt"
+    ]
+  },
+  "dv2tp": {
+    "in": [
+      "v",
+      "v0"
+    ],
+    "out": [
+      "xi",
+      "eta",
+      "j"
+    ]
+  },
+  "dvdv": {
+    "in": [
+      "va",
+      "vb"
+    ],
+    "out": [
+      "sla_dvdv"
+    ]
+  },
+  "dvn": {
+    "in": [
+      "v"
+    ],
+    "out": [
+      "uv",
+      "vm"
+    ]
+  },
+  "dvxv": {
+    "in": [
+      "va",
+      "vb"
+    ],
+    "out": [
+      "vc"
+    ]
+  },
+  "e2h": {
+    "in": [
+      "ha",
+      "dec",
+      "phi"
+    ],
+    "out": [
+      "az",
+      "el"
+    ]
+  },
+  "earth": {
+    "in": [
+      "iy",
+      "id",
+      "fd"
+    ],
+    "out": [
+      "pv"
+    ]
+  },
+  "ecleq": {
+    "in": [
+      "dl",
+      "db",
+      "date"
+    ],
+    "out": [
+      "dr",
+      "dd"
+    ]
+  },
+  "ecmat": {
+    "in": [
+      "date"
+    ],
+    "out": [
+      "rmat"
+    ]
+  },
+  "ecor": {
+    "in": [
+      "rm",
+      "dm",
+      "iy",
+      "id",
+      "fd"
+    ],
+    "out": [
+      "rv",
+      "tl"
+    ]
+  },
+  "eg50": {
+    "in": [
+      "dr",
+      "dd"
+    ],
+    "out": [
+      "dl",
+      "db"
+    ]
+  },
+  "el2ue": {
+    "in": [
+      "date",
+      "jform",
+      "epoch",
+      "orbinc",
+      "anode",
+      "perih",
+      "aorq",
+      "e",
+      "aorl",
+      "dm"
+    ],
+    "out": [
+      "u",
+      "jstat"
+    ]
+  },
+  "epb2d": {
+    "in": [
+      "epb"
+    ],
+    "out": [
+      "sla_epb2d"
+    ]
+  },
+  "epb": {
+    "in": [
+      "date"
+    ],
+    "out": [
+      "sla_epb"
+    ]
+  },
+  "epco": {
+    "in": [
+      "k0",
+      "k",
+      "e"
+    ],
+    "out": [
+      "sla_epco"
+    ]
+  },
+  "epj2d": {
+    "in": [
+      "epj"
+    ],
+    "out": [
+      "sla_epj2d"
+    ]
+  },
+  "epj": {
+    "in": [
+      "date"
+    ],
+    "out": [
+      "sla_epj"
+    ]
+  },
+  "epv": {
+    "in": [
+      "date"
+    ],
+    "out": [
+      "ph",
+      "vh",
+      "pb",
+      "vb"
+    ]
+  },
+  "eqecl": {
+    "in": [
+      "dr",
+      "dd",
+      "date"
+    ],
+    "out": [
+      "dl",
+      "db"
+    ]
+  },
+  "eqeqx": {
+    "in": [
+      "date"
+    ],
+    "out": [
+      "sla_eqeqx"
+    ]
+  },
+  "eqgal": {
+    "in": [
+      "dr",
+      "dd"
+    ],
+    "out": [
+      "dl",
+      "db"
+    ]
+  },
+  "etrms": {
+    "in": [
+      "ep"
+    ],
+    "out": [
+      "ev"
+    ]
+  },
+  "euler": {
+    "in": [
+      "order",
+      "phi",
+      "theta",
+      "psi"
+    ],
+    "out": [
+      "rmat"
+    ]
+  },
+  "evp": {
+    "in": [
+      "date",
+      "deqx"
+    ],
+    "out": [
+      "dvb",
+      "dpb",
+      "dvh",
+      "dph"
+    ]
+  },
+  "fitxy": {
+    "in": [
+      "itype",
+      "np",
+      "xye",
+      "xym"
+    ],
+    "out": [
+      "coeffs",
+      "j"
+    ]
+  },
+  "fk425": {
+    "in": [
+      "r1950",
+      "d1950",
+      "dr1950",
+      "dd1950",
+      "p1950",
+      "v1950"
+    ],
+    "out": [
+      "r2000",
+      "d2000",
+      "dr2000",
+      "dd2000",
+      "p2000",
+      "v2000"
+    ]
+  },
+  "fk45z": {
+    "in": [
+      "r1950",
+      "d1950",
+      "bepoch"
+    ],
+    "out": [
+      "r2000",
+      "d2000"
+    ]
+  },
+  "fk524": {
+    "in": [
+      "r2000",
+      "d2000",
+      "dr2000",
+      "dd2000",
+      "p2000",
+      "v2000"
+    ],
+    "out": [
+      "r1950",
+      "d1950",
+      "dr1950",
+      "dd1950",
+      "p1950",
+      "v1950"
+    ]
+  },
+  "fk52h": {
+    "in": [
+      "r5",
+      "d5",
+      "dr5",
+      "dd5"
+    ],
+    "out": [
+      "rh",
+      "dh",
+      "drh",
+      "ddh"
+    ]
+  },
+  "fk54z": {
+    "in": [
+      "r2000",
+      "d2000",
+      "bepoch"
+    ],
+    "out": [
+      "r1950",
+      "d1950",
+      "dr1950",
+      "dd1950"
+    ]
+  },
+  "fk5hz": {
+    "in": [
+      "r5",
+      "d5",
+      "epoch"
+    ],
+    "out": [
+      "rh",
+      "dh"
+    ]
+  },
+  "flotin": {
+    "in": [
+      "string_bn",
+      "nstrt"
+    ],
+    "out": [
+      "nstrt",
+      "reslt",
+      "jflag"
+    ]
+  },
+  "galeq": {
+    "in": [
+      "dl",
+      "db"
+    ],
+    "out": [
+      "dr",
+      "dd"
+    ]
+  },
+  "galsup": {
+    "in": [
+      "dl",
+      "db"
+    ],
+    "out": [
+      "dsl",
+      "dsb"
+    ]
+  },
+  "ge50": {
+    "in": [
+      "dl",
+      "db"
+    ],
+    "out": [
+      "dr",
+      "dd"
+    ]
+  },
+  "geoc": {
+    "in": [
+      "p",
+      "h"
+    ],
+    "out": [
+      "r",
+      "z"
+    ]
+  },
+  "gmsta": {
+    "in": [
+      "date",
+      "ut"
+    ],
+    "out": [
+      "sla_gmsta"
+    ]
+  },
+  "gmst": {
+    "in": [
+      "ut1"
+    ],
+    "out": [
+      "sla_gmst"
+    ]
+  },
+  "h2e": {
+    "in": [
+      "az",
+      "el",
+      "phi"
+    ],
+    "out": [
+      "ha",
+      "dec"
+    ]
+  },
+  "h2fk5": {
+    "in": [
+      "rh",
+      "dh",
+      "drh",
+      "ddh"
+    ],
+    "out": [
+      "r5",
+      "d5",
+      "dr5",
+      "dd5"
+    ]
+  },
+  "hfk5z": {
+    "in": [
+      "rh",
+      "dh",
+      "epoch"
+    ],
+    "out": [
+      "r5",
+      "d5",
+      "dr5",
+      "dd5"
+    ]
+  },
+  "_idchf": {
+    "in": [
+      "string_bn",
+      "nptr"
+    ],
+    "out": [
+      "nptr",
+      "nvec",
+      "ndigit",
+      "digit"
+    ]
+  },
+  "_idchi": {
+    "in": [
+      "string_bn",
+      "nptr"
+    ],
+    "out": [
+      "nptr",
+      "nvec",
+      "digit"
+    ]
+  },
+  "imxv": {
+    "in": [
+      "rm",
+      "va"
+    ],
+    "out": [
+      "vb"
+    ]
+  },
+  "intin": {
+    "in": [
+      "string_bn",
+      "nstrt"
+    ],
+    "out": [
+      "nstrt",
+      "ireslt",
+      "jflag"
+    ]
+  },
+  "invf": {
+    "in": [
+      "fwds"
+    ],
+    "out": [
+      "bkwds",
+      "j"
+    ]
+  },
+  "kbj": {
+    "in": [
+      "jb",
+      "e"
+    ],
+    "out": [
+      "k",
+      "j"
+    ]
+  },
+  "m2av": {
+    "in": [
+      "rmat"
+    ],
+    "out": [
+      "axvec"
+    ]
+  },
+  "map": {
+    "in": [
+      "rm",
+      "dm",
+      "pr",
+      "pd",
+      "px",
+      "rv",
+      "eq",
+      "date"
+    ],
+    "out": [
+      "ra",
+      "da"
+    ]
+  },
+  "mappa": {
+    "in": [
+      "eq",
+      "date"
+    ],
+    "out": [
+      "amprms"
+    ]
+  },
+  "mapqk": {
+    "in": [
+      "rm",
+      "dm",
+      "pr",
+      "pd",
+      "px",
+      "rv",
+      "amprms"
+    ],
+    "out": [
+      "ra",
+      "da"
+    ]
+  },
+  "mapqkz": {
+    "in": [
+      "rm",
+      "dm",
+      "amprms"
+    ],
+    "out": [
+      "ra",
+      "da"
+    ]
+  },
+  "moon": {
+    "in": [
+      "iy",
+      "id",
+      "fd"
+    ],
+    "out": [
+      "pv"
+    ]
+  },
+  "mxm": {
+    "in": [
+      "a",
+      "b"
+    ],
+    "out": [
+      "c"
+    ]
+  },
+  "mxv": {
+    "in": [
+      "rm",
+      "va"
+    ],
+    "out": [
+      "vb"
+    ]
+  },
+  "nutc80": {
+    "in": [
+      "date"
+    ],
+    "out": [
+      "dpsi",
+      "deps",
+      "eps0"
+    ]
+  },
+  "nutc": {
+    "in": [
+      "date"
+    ],
+    "out": [
+      "dpsi",
+      "deps",
+      "eps0"
+    ]
+  },
+  "nut": {
+    "in": [
+      "date"
+    ],
+    "out": [
+      "rmatn"
+    ]
+  },
+  "oap": {
+    "in": [
+      "type_bn",
+      "ob1",
+      "ob2",
+      "date",
+      "dut",
+      "elongm",
+      "phim",
+      "hm",
+      "xp",
+      "yp",
+      "tdk",
+      "pmb",
+      "rh",
+      "wl",
+      "tlr"
+    ],
+    "out": [
+      "rap",
+      "dap"
+    ]
+  },
+  "oapqk": {
+    "in": [
+      "type_bn",
+      "ob1",
+      "ob2",
+      "aoprms"
+    ],
+    "out": [
+      "rap",
+      "dap"
+    ]
+  },
+  "obs": {
+    "in": [
+      "n",
+      "c"
+    ],
+    "out": [
+      "c",
+      "name",
+      "w",
+      "p",
+      "h"
+    ]
+  },
+  "pa": {
+    "in": [
+      "ha",
+      "dec",
+      "phi"
+    ],
+    "out": [
+      "sla_pa"
+    ]
+  },
+  "pav": {
+    "in": [
+      "v1",
+      "v2"
+    ],
+    "out": [
+      "sla_pav"
+    ]
+  },
+  "pcd": {
+    "in": [
+      "disco",
+      "x",
+      "y"
+    ],
+    "out": [
+      "x",
+      "y"
+    ]
+  },
+  "pda2h": {
+    "in": [
+      "p",
+      "d",
+      "a"
+    ],
+    "out": [
+      "h1",
+      "j1",
+      "h2",
+      "j2"
+    ]
+  },
+  "pdq2h": {
+    "in": [
+      "p",
+      "d",
+      "q"
+    ],
+    "out": [
+      "h1",
+      "j1",
+      "h2",
+      "j2"
+    ]
+  },
+  "permut": {
+    "in": [
+      "n",
+      "istate"
+    ],
+    "out": [
+      "istate",
+      "iorder",
+      "j"
+    ]
+  },
+  "pertel": {
+    "in": [
+      "jform",
+      "date0",
+      "date1",
+      "epoch0",
+      "orbi0",
+      "anode0",
+      "perih0",
+      "aorq0",
+      "e0",
+      "am0"
+    ],
+    "out": [
+      "epoch1",
+      "orbi1",
+      "anode1",
+      "perih1",
+      "aorq1",
+      "e1",
+      "am1",
+      "jstat"
+    ]
+  },
+  "pertue": {
+    "in": [
+      "date",
+      "u"
+    ],
+    "out": [
+      "u",
+      "jstat"
+    ]
+  },
+  "planel": {
+    "in": [
+      "date",
+      "jform",
+      "epoch",
+      "orbinc",
+      "anode",
+      "perih",
+      "aorq",
+      "e",
+      "aorl",
+      "dm"
+    ],
+    "out": [
+      "pv",
+      "jstat"
+    ]
+  },
+  "planet": {
+    "in": [
+      "date",
+      "np"
+    ],
+    "out": [
+      "pv",
+      "jstat"
+    ]
+  },
+  "plante": {
+    "in": [
+      "date",
+      "elong",
+      "phi",
+      "jform",
+      "epoch",
+      "orbinc",
+      "anode",
+      "perih",
+      "aorq",
+      "e",
+      "aorl",
+      "dm"
+    ],
+    "out": [
+      "ra",
+      "dec",
+      "r",
+      "jstat"
+    ]
+  },
+  "plantu": {
+    "in": [
+      "date",
+      "elong",
+      "phi",
+      "u"
+    ],
+    "out": [
+      "ra",
+      "dec",
+      "r",
+      "jstat"
+    ]
+  },
+  "pm": {
+    "in": [
+      "r0",
+      "d0",
+      "pr",
+      "pd",
+      "px",
+      "rv",
+      "ep0",
+      "ep1"
+    ],
+    "out": [
+      "r1",
+      "d1"
+    ]
+  },
+  "polmo": {
+    "in": [
+      "elongm",
+      "phim",
+      "xp",
+      "yp"
+    ],
+    "out": [
+      "elong",
+      "phi",
+      "daz"
+    ]
+  },
+  "prebn": {
+    "in": [
+      "bep0",
+      "bep1"
+    ],
+    "out": [
+      "rmatp"
+    ]
+  },
+  "preces": {
+    "in": [
+      "system",
+      "ep0",
+      "ep1",
+      "ra",
+      "dc"
+    ],
+    "out": [
+      "ra",
+      "dc"
+    ]
+  },
+  "prec": {
+    "in": [
+      "ep0",
+      "ep1"
+    ],
+    "out": [
+      "rmatp"
+    ]
+  },
+  "precl": {
+    "in": [
+      "ep0",
+      "ep1"
+    ],
+    "out": [
+      "rmatp"
+    ]
+  },
+  "prenut": {
+    "in": [
+      "epoch",
+      "date"
+    ],
+    "out": [
+      "rmatpn"
+    ]
+  },
+  "pv2el": {
+    "in": [
+      "pv",
+      "date",
+      "pmass",
+      "jformr"
+    ],
+    "out": [
+      "jform",
+      "epoch",
+      "orbinc",
+      "anode",
+      "perih",
+      "aorq",
+      "e",
+      "aorl",
+      "dm",
+      "jstat"
+    ]
+  },
+  "pv2ue": {
+    "in": [
+      "pv",
+      "date",
+      "pmass"
+    ],
+    "out": [
+      "u",
+      "jstat"
+    ]
+  },
+  "pvobs": {
+    "in": [
+      "p",
+      "h",
+      "stl"
+    ],
+    "out": [
+      "pv"
+    ]
+  },
+  "pxy": {
+    "in": [
+      "np",
+      "xye",
+      "xym",
+      "coeffs"
+    ],
+    "out": [
+      "xyp",
+      "xrms",
+      "yrms",
+      "rrms"
+    ]
+  },
+  "range": {
+    "in": [
+      "angle"
+    ],
+    "out": [
+      "sla_range"
+    ]
+  },
+  "ranorm": {
+    "in": [
+      "angle"
+    ],
+    "out": [
+      "sla_ranorm"
+    ]
+  },
+  "rcc": {
+    "in": [
+      "tdb",
+      "ut1",
+      "wl",
+      "u",
+      "v"
+    ],
+    "out": [
+      "sla_rcc"
+    ]
+  },
+  "rdplan": {
+    "in": [
+      "date",
+      "np",
+      "elong",
+      "phi"
+    ],
+    "out": [
+      "ra",
+      "dec",
+      "diam"
+    ]
+  },
+  "refco": {
+    "in": [
+      "hm",
+      "tdk",
+      "pmb",
+      "rh",
+      "wl",
+      "phi",
+      "tlr",
+      "eps"
+    ],
+    "out": [
+      "refa",
+      "refb"
+    ]
+  },
+  "refcoq": {
+    "in": [
+      "tdk",
+      "pmb",
+      "rh",
+      "wl"
+    ],
+    "out": [
+      "refa",
+      "refb"
+    ]
+  },
+  "refro": {
+    "in": [
+      "zobs",
+      "hm",
+      "tdk",
+      "pmb",
+      "rh",
+      "wl",
+      "phi",
+      "tlr",
+      "eps"
+    ],
+    "out": [
+      "ref"
+    ]
+  },
+  "refv": {
+    "in": [
+      "vu",
+      "refa",
+      "refb"
+    ],
+    "out": [
+      "vr"
+    ]
+  },
+  "refz": {
+    "in": [
+      "zu",
+      "refa",
+      "refb"
+    ],
+    "out": [
+      "zr"
+    ]
+  },
+  "rverot": {
+    "in": [
+      "phi",
+      "ra",
+      "da",
+      "st"
+    ],
+    "out": [
+      "sla_rverot"
+    ]
+  },
+  "rvgalc": {
+    "in": [
+      "r2000",
+      "d2000"
+    ],
+    "out": [
+      "sla_rvgalc"
+    ]
+  },
+  "rvlg": {
+    "in": [
+      "r2000",
+      "d2000"
+    ],
+    "out": [
+      "sla_rvlg"
+    ]
+  },
+  "rvlsrd": {
+    "in": [
+      "r2000",
+      "d2000"
+    ],
+    "out": [
+      "sla_rvlsrd"
+    ]
+  },
+  "rvlsrk": {
+    "in": [
+      "r2000",
+      "d2000"
+    ],
+    "out": [
+      "sla_rvlsrk"
+    ]
+  },
+  "s2tp": {
+    "in": [
+      "ra",
+      "dec",
+      "raz",
+      "decz"
+    ],
+    "out": [
+      "xi",
+      "eta",
+      "j"
+    ]
+  },
+  "sep": {
+    "in": [
+      "a1",
+      "b1",
+      "a2",
+      "b2"
+    ],
+    "out": [
+      "sla_sep"
+    ]
+  },
+  "sepv": {
+    "in": [
+      "v1",
+      "v2"
+    ],
+    "out": [
+      "sla_sepv"
+    ]
+  },
+  "smat": {
+    "in": [
+      "n",
+      "a",
+      "y",
+      "iw"
+    ],
+    "out": [
+      "a",
+      "y",
+      "d",
+      "jf",
+      "iw"
+    ]
+  },
+  "subet": {
+    "in": [
+      "rc",
+      "dc",
+      "eq"
+    ],
+    "out": [
+      "rm",
+      "dm"
+    ]
+  },
+  "supgal": {
+    "in": [
+      "dsl",
+      "dsb"
+    ],
+    "out": [
+      "dl",
+      "db"
+    ]
+  },
+  "svdcov": {
+    "in": [
+      "n",
+      "np",
+      "nc",
+      "w",
+      "v"
+    ],
+    "out": [
+      "work",
+      "cvm"
+    ]
+  },
+  "svd": {
+    "in": [
+      "m",
+      "n",
+      "mp",
+      "np",
+      "a"
+    ],
+    "out": [
+      "a",
+      "w",
+      "v",
+      "work",
+      "jstat"
+    ]
+  },
+  "svdsol": {
+    "in": [
+      "m",
+      "n",
+      "mp",
+      "np",
+      "b",
+      "u",
+      "w",
+      "v"
+    ],
+    "out": [
+      "work",
+      "x"
+    ]
+  },
+  "tp2s": {
+    "in": [
+      "xi",
+      "eta",
+      "raz",
+      "decz"
+    ],
+    "out": [
+      "ra",
+      "dec"
+    ]
+  },
+  "tp2v": {
+    "in": [
+      "xi",
+      "eta",
+      "v0"
+    ],
+    "out": [
+      "v"
+    ]
+  },
+  "tps2c": {
+    "in": [
+      "xi",
+      "eta",
+      "ra",
+      "dec"
+    ],
+    "out": [
+      "raz1",
+      "decz1",
+      "raz2",
+      "decz2",
+      "n"
+    ]
+  },
+  "tpv2c": {
+    "in": [
+      "xi",
+      "eta",
+      "v"
+    ],
+    "out": [
+      "v01",
+      "v02",
+      "n"
+    ]
+  },
+  "ue2el": {
+    "in": [
+      "u",
+      "jformr"
+    ],
+    "out": [
+      "jform",
+      "epoch",
+      "orbinc",
+      "anode",
+      "perih",
+      "aorq",
+      "e",
+      "aorl",
+      "dm",
+      "jstat"
+    ]
+  },
+  "ue2pv": {
+    "in": [
+      "date",
+      "u"
+    ],
+    "out": [
+      "u",
+      "pv",
+      "jstat"
+    ]
+  },
+  "unpcd": {
+    "in": [
+      "disco",
+      "x",
+      "y"
+    ],
+    "out": [
+      "x",
+      "y"
+    ]
+  },
+  "v2tp": {
+    "in": [
+      "v",
+      "v0"
+    ],
+    "out": [
+      "xi",
+      "eta",
+      "j"
+    ]
+  },
+  "vdv": {
+    "in": [
+      "va",
+      "vb"
+    ],
+    "out": [
+      "sla_vdv"
+    ]
+  },
+  "veri": {
+    "in": [],
+    "out": [
+      "sla_veri"
+    ]
+  },
+  "vn": {
+    "in": [
+      "v"
+    ],
+    "out": [
+      "uv",
+      "vm"
+    ]
+  },
+  "vxv": {
+    "in": [
+      "va",
+      "vb"
+    ],
+    "out": [
+      "vc"
+    ]
+  },
+  "wait": {
+    "in": [
+      "delay"
+    ],
+    "out": []
+  },
+  "xy2xy": {
+    "in": [
+      "x1",
+      "y1",
+      "coeffs"
+    ],
+    "out": [
+      "x2",
+      "y2"
+    ]
+  },
+  "zd": {
+    "in": [
+      "ha",
+      "dec",
+      "phi"
+    ],
+    "out": [
+      "sla_zd"
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 import argparse
 import re
+import json
 from pathlib import Path
 
 import autopep8
@@ -167,14 +168,14 @@ def clean_file(in_file_lines):
 	f_lines = {fline.strip(): list() for fline in in_file_lines}
 	i_lines = [fline.strip() for fline in in_file_lines]
 	file_args = []
-
+	
 	n_lines = list(range(len(i_lines)))
 	for tk, tt in line_replace.items():
 		for ln in n_lines:
 			ll = f"{i_lines[ln]}"
 			if tt.test(ll):
 				f_lines[ll].append(tk)
-
+	
 	o_lines = []
 	c_il = 0
 	for ll, tl in f_lines.items():
@@ -188,7 +189,7 @@ def clean_file(in_file_lines):
 		rvl = ("\t" * c_il) + rvl
 		o_lines.append(rvl)
 		c_il += n_in
-
+	
 	o_lines = dict(enumerate(o_lines))
 	while file_args:
 		n_arg = file_args.pop().strip()
@@ -197,14 +198,46 @@ def clean_file(in_file_lines):
 				n_x = x.replace(n_arg, n_arg.lower())
 				ll = ll.replace(x, n_x)
 			o_lines[oln] = ll
-
+	
 	return list(o_lines.values())
+
+
+def parse_pyf():
+	if Path("parsed_pyf.json").exists():
+		return json.load(open("parsed_pyf.json"))
+	
+	in_pyf = (Path("pyslalib") / "slalib.pyf").resolve().open("r")
+	fn_name = ""
+	fn_info = {}
+	for line in in_pyf:
+		if "function" in line or "subroutine" in line:
+			if "end" not in line:
+				fn_name = re.search(r"sla_(\w+)", line).group(1)
+				fn_info[fn_name] = {"in": [], "out": []}
+		elif "::" in line:
+			arg_def = False
+			in_out_t = re.findall(r"intent ?\(([out,in ]+)\)", line)
+			var_name = re.findall(r":: *(\w+)", line)
+			if in_out_t:
+				in_out_t = in_out_t[0]
+			if var_name:
+				var_name = var_name[0]
+			if "out" in in_out_t:
+				arg_def = True
+				fn_info[fn_name]["out"].append(var_name)
+			if "in" in in_out_t:
+				arg_def = True
+				fn_info[fn_name]["in"].append(var_name)
+			if not arg_def:
+				fn_info[fn_name]["in"].append(var_name)
+	json.dump(fn_info, open("parsed_pyf.json", "w"), indent=2)
+	return fn_info
 
 
 if __name__ == "__main__":
 	converted_path = Path("converted")
 	converted_path.mkdir(parents=True, exist_ok=True)
-	
+	pyf_info = parse_pyf()
 	parser = argparse.ArgumentParser(
 		description='Format fortran in SLALib to nearly python'
 	)
@@ -225,6 +258,7 @@ if __name__ == "__main__":
 			converted.add(in_fn)
 			continue
 		in_fpa = Path("pyslalib") / (in_fn + ".f")
+		
 		with open(in_fpa, "r") as if_fp:
 			print("----------------------")
 			print("converting ", in_fpa)
