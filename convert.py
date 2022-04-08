@@ -8,6 +8,7 @@ from string import Template
 import autopep8
 
 file_args = IndexedSet()
+known_arrs = IndexedSet()
 
 
 def ind_set_extend(ind_set, in_iter):
@@ -71,11 +72,12 @@ class CallT(Transformation):
 		if not match:
 			return rv
 		call_fn = match[1].lower()
+		call_fn = call_fn.replace("sla_", "")
 		call_info = pyf_info[call_fn]
 		call_in = call_info['in']
 		call_out = call_info['out']
 		
-		call_fn_args = ",".join([x.strip() for x in match[2].split(",")[:len(call_in)]])
+		call_fn_args = ",".join([x.strip() for x in match[2].split(",")[:(len(call_in) + 1)]])
 		rv = f"{','.join(call_out)} = cls.{call_fn}({call_fn_args})"
 		
 		new_dep = call_fn
@@ -91,13 +93,25 @@ class FuncT(Transformation):
 		match = re.search(r"sla_(\w+)\((.+)\)", rv)
 		fn_args = [x.strip() for x in match[2].split(",")]
 		ind_set_extend(file_args, fn_args)
-		fn_args = [x.lower() for x in fn_args]
-		fn_args_str = ", ".join(fn_args)
-		rv = re.sub(r"sla_(\w+)\((.+)\)", f'{match[1].lower()}({fn_args_str})', rv)
+		
+		call_fn = match[1].lower()
+		call_info = pyf_info[call_fn]
+		ind_set_extend(file_args, call_info['in'])
+		ind_set_extend(file_args, call_info['out'])
+		call_in = ["cls", *call_info['in']]
+		fn_args_str = ",".join([x.strip() for x in call_in])
+		rv = re.sub(r"sla_(\w+)\((.+)\)", f'{call_fn}({fn_args_str})', rv)
 		return rv
 
 
-fVar = r"[_A-Z][0-9A-Z_]+"
+class ArrDefT(Transformation):
+	def replace(self, in_string):
+		rv = super().replace(in_string)
+		v_name, _ = rv.split("=", 1)
+		v_name = v_name.strip()
+		known_arrs.add(v_name)
+		return rv
+
 
 line_replace = {
 	"function": FuncT(
@@ -128,24 +142,27 @@ line_replace = {
 	"neq": Transformation(r" ?\.NE\. ?", r" != "),
 	"and": Transformation(r" ?\.AND\. ?", r" and "),
 	"or": Transformation(r" ?\.OR\. ?", r" or "),
-	"anint": Transformation(r"ANINT", r"np.rint"),
-	"dble": Transformation(r"DBLE", ""),
-	"sqrt": Transformation(r"SQRT", r"np.sqrt"),
-	"sign": Transformation(r"SIGN", r"np.sign"),
-	"nint": Transformation(r"NINT", r"np.rint"),
-	"abs": Transformation(r"ABS", r"np.abs"),
+	"anint": Transformation(r"(\W)ANINT(\W)", r"\g<1>np.rint\g<2>"),
+	"dble": Transformation(r"(\W)DBLE(\W)", "\g<1>\g<2>"),
+	"sqrt": Transformation(r"SQRT\(", r"np.sqrt("),
+	"sign": Transformation(r"SIGN\(", r"np.sign("),
+	"nint": Transformation(r"NINT\(", r"np.rint("),
+	"abs": Transformation(r"ABS\(", r"np.abs("),
 	"cos": Transformation(r"COS\(", r"np.cos("),
 	"sin": Transformation(r"SIN\(", r"np.sin("),
 	"tan": Transformation(r"TAN\(", r"np.tan("),
 	"atan2": Transformation(r"ATAN2\(", r"np.arctan2("),
-	"mod": Transformation(r"MOD", r"np.mod"),
-	"setter": Transformation(r"(\w+)\((\d+)\) = ", r"\g<1>[\g<2>] = "),
-	"max": Transformation(r"MAX", r"np.maximum"),
-	"min": Transformation(r"MIN", "np.minimum"),
-	"arr_def": Transformation(r"DATA (\w+) / ([0-9,]+) /", "\g<1> = [\g<2>]"),
+	"mod": Transformation(r"MOD\(", r"np.mod("),
+	"setter": Transformation(r"(\w+) ?\((\d+)\) ?= ?", r"\g<1>[\g<2>] = "),
+	"max": Transformation(r"MAX\(", r"np.maximum("),
+	"min": Transformation(r"MIN\(", "np.minimum("),
+	"arr_def": ArrDefT(r"DATA +(\w+) +/ ([0-9,]+) /", r"\g<1> = [\g<2>]"),
+	"arr_set": ArrDefT(r"DATA +(\w+) +\(([0-9]+)\) +\/ ?([0-9A-Za-z, .'\"_-]+) ?\/", r"\g<1>[\g<2>] = \g<3>"),
 	"implicit_none": Transformation("IMPLICIT NONE", ""),
 	"double_prec": Transformation(r"DOUBLE PRECISION (.+)", r""),
+	"parameter": Transformation(r"PARAMETER ?\((.+)\)", r"\g<1>"),
 	"int": Transformation(r"INTEGER (.+)", r""),
+	"real": Transformation(r"REAL (.+)", r""),
 	"double_constant": Transformation(
 		r"(\d+)(?:D|E)(-?)\+?0*(\d+)", r"\g<1>e\g<2>\g<3>"
 	),
@@ -192,19 +209,18 @@ def first_pass(in_file_lines):
 
 
 def clean_file(in_fn_args, fn_returns, in_file_name, in_file_lines):
-	global file_args
+	global file_args, known_arrs
 	n_lines = len(in_file_lines)
 	l_list = [f_line.strip() for f_line in in_file_lines]
 	t_list = [list() for _ in range(n_lines)]
 	file_args = IndexedSet(in_fn_args)
+	known_arrs = IndexedSet()
 	
 	line_replace['file_return']['cfn'] = in_file_name
 	for ln in range(n_lines):
 		ll = l_list[ln]
 		for tk, tt in line_replace.items():
 			if tt.test(ll):
-				print("==================")
-				print(ll, " passed testing for ", tk, " : ", tt.f_t)
 				t_list[ln].append(tk)
 	
 	o_lines = []
@@ -225,17 +241,29 @@ def clean_file(in_fn_args, fn_returns, in_file_name, in_file_lines):
 	r_str = ','.join(fn_returns)
 	if 'sla_' not in r_str:
 		o_lines.append(f"\t\treturn {','.join(fn_returns)}")
+		ind_set_extend(file_args, fn_returns)
 	
 	o_lines = dict(enumerate(o_lines))
-	non_ascii = r"[ *+=\-\)\(\\/]"
+	non_ascii = r"[ *+=\-\)\(\\/,_	]"
+	r_b = r"^"
+	r_e = r"$"
 	while file_args:
 		n_arg = file_args.pop().strip()
 		for oln, ll in o_lines.items():
-			for x in re.findall(f'{non_ascii}{n_arg}{non_ascii}', ll):
-				n_x = x.replace(n_arg, n_arg.lower())
-				ll = ll.replace(x, n_x)
-			for x in re.findall(f'{non_ascii}{n_arg.upper()}{non_ascii}', ll):
-				n_x = x.replace(n_arg.upper(), n_arg.lower())
+			for nu_arg in [n_arg, n_arg.lower(), n_arg.upper()]:
+				for search_str in [f'{non_ascii}{nu_arg}{non_ascii}', f'{r_b}{nu_arg}{non_ascii}', f'{non_ascii}{nu_arg}{r_e}']:
+					for x in re.findall(search_str, ll, re.M):
+						n_x = x.replace(nu_arg, n_arg.lower())
+						ll = ll.replace(x, n_x)
+			o_lines[oln] = ll
+	
+	find_args = r'\([_0-9A-Za-z]+\)'
+	while known_arrs:
+		n_arg = known_arrs.pop()
+		for oln, ll in o_lines.items():
+			search_str = f'{non_ascii}?{n_arg}{find_args}'
+			for x in re.findall(search_str, ll, re.M):
+				n_x = x.replace("(", "[").replace(")", "]")
 				ll = ll.replace(x, n_x)
 			o_lines[oln] = ll
 	
