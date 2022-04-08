@@ -3086,68 +3086,395 @@ class SLALib:
 		return iptr, a, j
 	
 	@classmethod
-	def dtps2c(cls, xi, eta, ra, dec, raz1, decz1, raz2, decz2, n):
-		
+	def cldj(cls, iy, im, id):
 		# +
-		# - - - - - - -
-		# D T P S 2 C
+		# - - - - -
+		# C L D j
+		# - - - - -
 		#
-		# From the tangent plane coordinates of a star of known RA,Dec,
-		# determine the RA,Dec of the tangent point.
-		# (double precision)
+		# Gregorian Calendar to Modified julian Date
+		#
 		# Given:
-		# xi,eta      d    tangent plane rectangular coordinates
-		# RA,DEC      d    spherical coordinates
-		# Returned:
-		# RAZ1,DECZ1  d    spherical coordinates of tangent point, solution 1
-		# RAZ2,DECZ2  d    spherical coordinates of tangent point, solution 2
-		# n           i    number of solutions:
-		# 0 = no solutions returned (note 2)
-		# 1 = only the first solution is useful (note 3)
-		# 2 = both solutions are useful (note 3)
-		# Notes:
-		# 1  The raz1 and raz2 values are returned in the range 0-2pi.
-		# 2  Cases where there is no solution can only arise near the poles.
-		# For example, it is clearly impossible for a star at the pole
-		# itself to have a non-zero xi value, and hence it is
-		# meaningless to ask where the tangent point would have to be
-		# to bring about this combination of xi and DEC.
-		# 3  Also near the poles, cases can arise where there are two useful
-		# solutions.  The argument n indicates whether the second of the
-		# two solutions returned is useful.  n=1 indicates only one useful
-		# solution, the usual case;  under these circumstances, the second
-		# solution corresponds to the "over-the-pole" case, and this is
-		# reflected in the values of raz2 and decz2 which are returned.
-		# 4  The decz1 and decz2 values are returned in the range +/-pi, but
-		# in the usual, non-pole-crossing, case, the range is +/-pi/2.
-		# 5  This routine is the spherical equivalent of the routine sla_DTPV2C.
-		# Depends:  sla_DRANRM
-		# P.T.Wallace   Starlink   5 June 1995
-		# Copyright (C) 1995 Rutherford Appleton Laboratory
+		# iy,IM,id     int    year, month, day in Gregorian calendar
 		#
+		# Returned:
+		# djm          dp     modified julian Date (jD-2400000.5) for 0 hrs
+		# j            int    status:
+		# 0 = OK
+		# 1 = bad year   (MJD not computed)
+		# 2 = bad month  (MJD not computed)
+		# 3 = bad day    (MJD computed)
+		#
+		# The year must be -4699 (i.e. 4700BC) or later.
+		#
+		# The algorithm is adapted from Hatcher 1984 (QJRAS 25, 53-55).
+		#
+		# Last revision:   27 july 2004
+		#
+		# Copyright P.T.Wallace.  All rights reserved.
 		# -
 		
-		X2 = xi * xi
-		Y2 = eta * eta
-		SD = np.sin(dec)
-		CD = np.cos(dec)
-		SDF = SD * np.sqrt(1e0 + X2 + Y2)
-		R2 = CD * CD * (1e0 + Y2) - SD * SD * X2
-		if R2 >= 0e0:
-			R = np.sqrt(R2)
-			S = SDF - eta * R
-			C = SDF * eta + R
-			if xi == 0e0 and R == 0e0:
-				R = 1e0
-			raz1 = cls.dranrm(ra - np.arctan2(xi))
-			decz1 = np.arctan2(S, C)
-			R = -R
-			S = SDF - eta * R
-			C = SDF * eta + R
-			raz2 = cls.dranrm(ra - np.arctan2(xi))
-			decz2 = np.arctan2(S, C)
-			n = 1 if np.abs(SDF) < 1e0 else 2
-		else:
-			n = 0
+		# Month lengths in days
 		
-		return raz1, decz1, raz2, decz2, n
+		MTAB = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+		
+		# Preset status.
+		j = 0
+		djm = 0
+		
+		# Validate year.
+		if iy < -4699:
+			j = 1
+		elif 1 <= im <= 12:
+			
+			# Allow for leap year.
+			MTAB[2] = 29 if (np.mod(iy, 4) == 0) else 28
+			MTAB[2] = 28 if (np.mod(iy, 100) == 0 and np.mod(iy, 400) != 0) else MTAB[2]
+			
+			# Validate day.
+			j = 3 if (id < 1 or id > MTAB[im]) else j
+			
+			# Modified julian Date.
+			djm = (
+				(1461 * (iy - (12 - im) / 10 + 4712)) / 4 +
+				(306 * np.mod(im + 9, 12) + 5) / 10 -
+				(3 * ((iy - (12 - im) / 10 + 4900) / 100)) / 4 +
+				id - 2399904
+			)
+		# Bad month.
+		else:
+			j = 2
+		
+		return djm, j
+
+
+@classmethod
+def obs(cls, n=None, c=None):
+	# +
+	# - - - -
+	# O B S
+	# - - - -
+	# Parameters of selected groundbased observing stations
+	# Given:
+	# n       int     number specifying observing station
+	# Either given or returned
+	# c c*(*)   identifier specifying observing station
+	# Returned:
+	# name    c*(*)   name of specified observing station
+	# w       dp      longitude (radians, West +ve)
+	# p       dp      geodetic latitude (radians, North +ve)
+	# h       dp      height above sea level (metres)
+	# Notes:
+	# Station identifiers c may be up to 10 characters long,
+	# and station names name may be up to 40 characters long.
+	# c and n are alternative ways of specifying the observing
+	# station.  The c option, which is the most generally useful,
+	# may be selected by specifying an n value of zero or less.
+	# If n is 1 or more, the parameters of the Nth station
+	# in the currently supported list are interrogated, and
+	# the station identifier c is returned as well as name, w,
+	# p and H.
+	# If the station parameters are not available, either because
+	# the station identifier c is not recognized, or because an
+	# n value greater than the number of stations supported is
+	# given, a name of '?' is returned and c, w, p and h are left
+	# in their current states.
+	# Programs can obtain a list of all currently supported
+	# stations by calling the routine repeatedly, with n=1,2,3...
+	# When name='?' is seen, the list of stations has been
+	# exhausted.
+	# Station numbers, identifiers, names and other details are
+	# subject to change and should not be hardwired into
+	# application programs.
+	# All station identifiers c are uppercase only;  lowercase
+	# characters must be converted to uppercase by the calling
+	# program.  The station names returned may contain both upper-
+	# and lowercase.  All characters up to the first space are
+	# checked;  thus an abbreviated ID will return the parameters
+	# for the first station in the list which matches the
+	# abbreviation supplied, and no station in the list will ever
+	# contain embedded spaces.  c must not have leading spaces.
+	# IMPORTANT -- BEWARE OF THE LONGITUDE SIGN CONVENTION.  The
+	# longitude returned by sla_OBS is west-positive in accordance
+	# with astronomical usage.  However, this sign convention is
+	# left-handed and is the opposite of the one used by geographers;
+	# elsewhere in SLALIB the preferable east-positive convention is
+	# used.  In particular, note that for use in sla_AOP, sla_AOPPA
+	# and sla_OAP the sign of the longitude must be reversed.
+	# Users are urged to inform the author of any improvements
+	# they would like to see made.  For example:
+	# typographical corrections
+	# more accurate parameters
+	# better station identifiers or names
+	# additional stations
+	# P.T.Wallace   Starlink   15 March 2002
+	# Copyright (c) 2002 Rutherford Appleton Laboratory
+	# -
+	AS2R = 0.484813681109535994e-5
+	
+	# Table of station identifiers
+	NMAX = 83
+	CTAB = [' '] * NMAX
+	CTAB[1] = 'AAT       '
+	CTAB[2] = 'LPO4.2    '
+	CTAB[3] = 'LPO2.5    '
+	CTAB[4] = 'LPO1      '
+	CTAB[5] = 'LICK120   '
+	CTAB[6] = 'MMT       '
+	CTAB[7] = 'DAO72     '
+	CTAB[8] = 'DUPONT    '
+	CTAB[9] = 'MTHOP1.5  '
+	CTAB[10] = 'STROMLO74 '
+	CTAB[11] = 'ANU2.3    '
+	CTAB[12] = 'GBVA140   '
+	CTAB[13] = 'TOLOLO4M  '
+	CTAB[14] = 'TOLOLO1.5M'
+	CTAB[15] = 'TIDBINBLA '
+	CTAB[16] = 'BLOEMF    '
+	CTAB[17] = 'BOSQALEGRE'
+	CTAB[18] = 'FLAGSTF61 '
+	CTAB[19] = 'LOWELL72  '
+	CTAB[20] = 'HARVARD   '
+	CTAB[21] = 'OKAYAMA   '
+	CTAB[22] = 'KPNO158   '
+	CTAB[23] = 'KPNO90    '
+	CTAB[24] = 'KPNO84    '
+	CTAB[25] = 'KPNO36FT  '
+	CTAB[26] = 'KOTTAMIA  '
+	CTAB[27] = 'ESO3.6    '
+	CTAB[28] = 'MAUNAK88  '
+	CTAB[29] = 'UKIRT     '
+	CTAB[30] = 'QUEBEC1.6 '
+	CTAB[31] = 'MTEKAR    '
+	CTAB[32] = 'MTLEMMON60'
+	CTAB[33] = 'MCDONLD2.7'
+	CTAB[34] = 'MCDONLD2.1'
+	CTAB[35] = 'PALOMAR200'
+	CTAB[36] = 'PALOMAR60 '
+	CTAB[37] = 'DUNLAP74  '
+	CTAB[38] = 'HPROV1.93 '
+	CTAB[39] = 'HPROV1.52 '
+	CTAB[40] = 'SANPM83   '
+	CTAB[41] = 'SAAO74    '
+	CTAB[42] = 'TAUTNBG   '
+	CTAB[43] = 'CATALINA61'
+	CTAB[44] = 'STEWARD90 '
+	CTAB[45] = 'USSR6     '
+	CTAB[46] = 'ARECIBO   '
+	CTAB[47] = 'CAMB5KM   '
+	CTAB[48] = 'CAMB1MILE '
+	CTAB[49] = 'EFFELSBERG'
+	CTAB[50] = 'GBT       '
+	CTAB[51] = 'JODRELL1  '
+	CTAB[52] = 'PARKES    '
+	CTAB[53] = 'VLA       '
+	CTAB[54] = 'SUGARGROVE'
+	CTAB[55] = 'USSR600   '
+	CTAB[56] = 'NOBEYAMA  '
+	CTAB[57] = 'JCMT      '
+	CTAB[58] = 'ESONTT    '
+	CTAB[59] = 'ST.ANDREWS'
+	CTAB[60] = 'APO3.5    '
+	CTAB[61] = 'KECK1     '
+	CTAB[62] = 'TAUTSCHM  '
+	CTAB[63] = 'PALOMAR48 '
+	CTAB[64] = 'UKST      '
+	CTAB[65] = 'KISO      '
+	CTAB[66] = 'ESOSCHM   '
+	CTAB[67] = 'ATCA      '
+	CTAB[68] = 'MOPRA     '
+	CTAB[69] = 'SUBARU    '
+	CTAB[70] = 'CFHT      '
+	CTAB[71] = 'KECK2     '
+	CTAB[72] = 'GEMININ   '
+	CTAB[73] = 'FCRAO     '
+	CTAB[74] = 'IRTF      '
+	CTAB[75] = 'CSO       '
+	CTAB[76] = 'VLT1      '
+	CTAB[77] = 'VLT2      '
+	CTAB[78] = 'VLT3      '
+	CTAB[79] = 'VLT4      '
+	CTAB[80] = 'GEMINIS   '
+	CTAB[81] = 'KOSMA3M   '
+	CTAB[82] = 'MAGELLAN1 '
+	CTAB[83] = 'MAGELLAN2 '
+	
+	# Degrees, arcminutes, arcseconds to radians
+	WEST = lambda ID, IAM, AS: AS2R * ((60 * (60 * ID + IAM)) + AS)
+	NORTH = WEST
+	EAST = lambda ID, IAM, AS: -1 * WEST(ID, IAM, AS)
+	SOUTH = lambda ID, IAM, AS: -1 * WEST(ID, IAM, AS)
+	
+	observatories = {
+		# AAT (Observer's Guide)
+		"AAT": ('Anglo-Australian 3.9m Telescope', EAST(149, 3, 57.91), SOUTH(31, 16, 37.34), 1164e0),
+		# WHT (Gemini, April 1987)
+		"LPO4.2": ('William Herschel 4.2m Telescope', WEST(17, 52, 53.9), NORTH(28, 45, 38.1), 2332e0),
+		# INT (Gemini, April 1987)
+		"LPO2.5": ('Isaac Newton 2.5m Telescope', WEST(17, 52, 39.5), NORTH(28, 45, 43.2), 2336e0),
+		# JKT (Gemini, April 1987)
+		"LPO1": ('Jacobus Kapteyn 1m Telescope', WEST(17, 52, 41.2), NORTH(28, 45, 39.9), 2364e0),
+		# Lick 120" (S.L.Allen, private communication, 2002)
+		"LICK120": ('Lick 120 inch', WEST(121, 38, 13.689), NORTH(37, 20, 34.931), 1286e0),
+		# MMT 6.5m conversion (MMT Observatory website)
+		"MMT": ('MMT 6.5m, Mt Hopkins', WEST(110, 53, 4.4), NORTH(31, 41, 19.6), 2608e0),
+		# Victoria B.C. 1.85m (1984 Almanac)
+		"DAO72": ('DAO Victoria BC 1.85 metre', WEST(123, 25, 1.18), NORTH(48, 31, 11.9), 238e0),
+		# Las Campanas (1983 Almanac)
+		"DUPONT": ('Du Pont 2.5m Telescope, Las Campanas', WEST(70, 42, 9.), SOUTH(29, 0, 11.), 2280e0),
+		# Mt Hopkins 1.5m (1983 Almanac)
+		"MTHOP1.5": ('Mt Hopkins 1.5 metre', WEST(110, 52, 39.00), NORTH(31, 40, 51.4), 2344e0),
+		# Mt Stromlo 74" (1983 Almanac)
+		"STROMLO74": ('Mount Stromlo 74 inch', EAST(149, 0, 27.59), SOUTH(35, 19, 14.3), 767e0),
+		# ANU 2.3m, SSO (Gary Hovey)
+		"ANU2.3": ('Siding Spring 2.3 metre', EAST(149, 3, 40.3), SOUTH(31, 16, 24.1), 1149e0),
+		# Greenbank 140' (1983 Almanac)
+		"GBVA140": ('Greenbank 140 foot', WEST(79, 50, 9.61), NORTH(38, 26, 15.4), 881e0),
+		# Cerro Tololo 4m (1982 Almanac)
+		"TOLOLO4M": ('Cerro Tololo 4 metre', WEST(70, 48, 53.6), SOUTH(30, 9, 57.8), 2235e0),
+		# Cerro Tololo 1.5m (1982 Almanac)
+		"TOLOLO1.5M": ('Cerro Tololo 1.5 metre', WEST(70, 48, 54.5), SOUTH(30, 9, 56.3), 2225e0),
+		# Tidbinbilla 64m (1982 Almanac)
+		"TIDBINBLA": ('Tidbinbilla 64 metre', EAST(148, 58, 48.20), SOUTH(35, 24, 14.3), 670e0),
+		# Bloemfontein 1.52m (1981 Almanac)
+		"BLOEMF": ('Bloemfontein 1.52 metre', EAST(26, 24, 18.), SOUTH(29, 2, 18.), 1387e0),
+		# Bosque Alegre 1.54m (1981 Almanac)
+		"BOSQALEGRE": ('Bosque Alegre 1.54 metre', WEST(64, 32, 48.0), SOUTH(31, 35, 53.), 1250e0),
+		# USNO 61" astrographic reflector, Flagstaff (1981 Almanac)
+		"FLAGSTF61": ('USNO 61 inch astrograph, Flagstaff', WEST(111, 44, 23.6), NORTH(35, 11, 2.5), 2316e0),
+		# Lowell 72" (1981 Almanac)
+		"LOWELL72": ('Perkins 72 inch, Lowell', WEST(111, 32, 9.3), NORTH(35, 5, 48.6), 2198e0),
+		# Harvard 1.55m (1981 Almanac)
+		"HARVARD": ('Harvard College Observatory 1.55m', WEST(71, 33, 29.32), NORTH(42, 30, 19.0), 185e0),
+		# Okayama 1.88m (1981 Almanac)
+		"OKAYAMA": ('Okayama 1.88 metre', EAST(133, 35, 47.29), NORTH(34, 34, 26.1), 372e0),
+		# Kitt Peak Mayall 4m (1981 Almanac)
+		"KPNO158": ('Kitt Peak 158 inch', WEST(111, 35, 57.61), NORTH(31, 57, 50.3), 2120e0),
+		# Kitt Peak 90 inch (1981 Almanac)
+		"KPNO90": ('Kitt Peak 90 inch', WEST(111, 35, 58.24), NORTH(31, 57, 46.9), 2071e0),
+		# Kitt Peak 84 inch (1981 Almanac)
+		"KPNO84": ('Kitt Peak 84 inch', WEST(111, 35, 51.56), NORTH(31, 57, 29.2), 2096e0),
+		# Kitt Peak 36 foot (1981 Almanac)
+		"KPNO36FT": ('Kitt Peak 36 foot', WEST(111, 36, 51.12), NORTH(31, 57, 12.1), 1939e0),
+		# Kottamia 74" (1981 Almanac)
+		"KOTTAMIA": ('Kottamia 74 inch', EAST(31, 49, 30.), NORTH(29, 55, 54.), 476e0),
+		# La Silla 3.6m (1981 Almanac)
+		"ESO3.6": ('ESO 3.6 metre', WEST(70, 43, 36.), SOUTH(29, 15, 36.), 2428e0),
+		# Mauna Kea 88 inch        (IfA website, Richard Wainscoat)
+		"MAUNAK88": ('Mauna Kea 88 inch', WEST(155, 28, 9.96), NORTH(19, 49, 22.77), 4213.6e0),
+		# UKIRT (IfA website, Richard Wainscoat)
+		"UKIRT": ('UK Infra Red Telescope', WEST(155, 28, 13.18), NORTH(19, 49, 20.75), 4198.5e0),
+		# Quebec 1.6m (1981 Almanac)
+		"QUEBEC1.6": ('Quebec 1.6 metre', WEST(71, 9, 9.7), NORTH(45, 27, 20.6), 1114e0),
+		# Mt Ekar 1.82m (1981 Almanac)
+		"MTEKAR": ('Mt Ekar 1.82 metre', EAST(11, 34, 15.), NORTH(45, 50, 48.), 1365e0),
+		# Mt Lemmon 60" (1981 Almanac)
+		"MTLEMMON60": ('Mt Lemmon 60 inch', WEST(110, 42, 16.9), NORTH(32, 26, 33.9), 2790e0),
+		# Mt Locke 2.7m (1981 Almanac)
+		"MCDONLD2.7": ('McDonald 2.7 metre', WEST(104, 1, 17.60), NORTH(30, 40, 17.7), 2075e0),
+		# Mt Locke 2.1m (1981 Almanac)
+		"MCDONLD2.1": ('McDonald 2.1 metre', WEST(104, 1, 20.10), NORTH(30, 40, 17.7), 2075e0),
+		# Palomar 200" (1981 Almanac)
+		"PALOMAR200": ('Palomar 200 inch', WEST(116, 51, 50.), NORTH(33, 21, 22.), 1706e0),
+		# Palomar 60" (1981 Almanac)
+		"PALOMAR60": ('Palomar 60 inch', WEST(116, 51, 31.), NORTH(33, 20, 56.), 1706e0),
+		# David Dunlap 74" (1981 Almanac)
+		"DUNLAP74": ('David Dunlap 74 inch', WEST(79, 25, 20.), NORTH(43, 51, 46.), 244e0),
+		# Haute Provence 1.93m (1981 Almanac)
+		"HPROV1.93": ('Haute Provence 1.93 metre', EAST(5, 42, 46.75), NORTH(43, 55, 53.3), 665e0),
+		# Haute Provence 1.52m (1981 Almanac)
+		"HPROV1.52": ('Haute Provence 1.52 metre', EAST(5, 42, 43.82), NORTH(43, 56, 0.2), 667e0),
+		# San Pedro Martir 83" (1981 Almanac)
+		"SANPM83": ('San Pedro Martir 83 inch', WEST(115, 27, 47.), NORTH(31, 2, 38.), 2830e0),
+		# Sutherland 74" (1981 Almanac)
+		"SAAO74": ('Sutherland 74 inch', EAST(20, 48, 44.3), SOUTH(32, 22, 43.4), 1771e0),
+		# Tautenburg 2m (1981 Almanac)
+		"TAUTNBG": ('Tautenburg 2 metre', EAST(11, 42, 45.), NORTH(50, 58, 51.), 331e0),
+		# Catalina 61" (1981 Almanac)
+		"CATALINA61": ('Catalina 61 inch', WEST(110, 43, 55.1), NORTH(32, 25, 0.7), 2510e0),
+		# Steward 90" (1981 Almanac)
+		"STEWARD90": ('Steward 90 inch', WEST(111, 35, 58.24), NORTH(31, 57, 46.9), 2071e0),
+		# Russian 6m (1981 Almanac)
+		"USSR6": ('USSR 6 metre', EAST(41, 26, 30.0), NORTH(43, 39, 12.), 2100e0),
+		# Arecibo 1000' (1981 Almanac)
+		"ARECIBO": ('Arecibo 1000 foot', WEST(66, 45, 11.1), NORTH(18, 20, 36.6), 496e0),
+		# Cambridge 5km (1981 Almanac)
+		"CAMB5KM": ('Cambridge 5km', EAST(0, 2, 37.23), NORTH(52, 10, 12.2), 17e0),
+		# Cambridge 1 mile (1981 Almanac)
+		"CAMB1MILE": ('Cambridge 1 mile', EAST(0, 2, 21.64), NORTH(52, 9, 47.3), 17e0),
+		# Bonn 100m (1981 Almanac)
+		"EFFELSBERG": ('Effelsberg 100 metre', EAST(6, 53, 1.5), NORTH(50, 31, 28.6), 366e0),
+		# Green Bank Telescop
+		"100m": ('Green Bank Telescope', WEST(79, 50, 23.406), NORTH(38, 25, 59.236), 880e0),
+		# Jodrell Bank Mk 1 (1981 Almanac)
+		"JODRELL1": ('Jodrell Bank 250 foot', WEST(2, 18, 25.), NORTH(53, 14, 10.5), 78e0),
+		# Australia Telescope Parkes Observatory   (Peter te Lintel Hekkert)
+		"PARKES": ('Parkes 64 metre', EAST(148, 15, 44.3591), SOUTH(32, 59, 59.8657), 391.79e0),
+		# VLA (1981 Almanac)
+		"VLA": ('Very Large Array', WEST(107, 37, 3.82), NORTH(34, 4, 43.5), 2124e0),
+		# Sugar Grove 150' (1981 Almanac)
+		"SUGARGROVE": ('Sugar Grove 150 foot', WEST(79, 16, 23.), NORTH(38, 31, 14.), 705e0),
+		# Russian 600' (1981 Almanac)
+		"USSR600": ('USSR 600 foot', EAST(41, 35, 25.5), NORTH(43, 49, 32.), 973e0),
+		# Nobeyama 45 metre mm dish (based on 1981 Almanac entry)
+		"NOBEYAMA": ('Nobeyama 45 metre', EAST(138, 29, 12.), NORTH(35, 56, 19.), 1350e0),
+		# James Clerk Maxwell 15 metre mm telescope, Mauna Kea   (IfA website, Richard Wainscoat, height from I.Coulson)
+		"JCMT": ('JCMT 15 metre', WEST(155, 28, 37.20), NORTH(19, 49, 22.11), 4111e0),
+		# ESO 3.5 metre NTT, La Silla (K.Wirenstrand)
+		"ESONTT": ('ESO 3.5 metre NTT', WEST(70, 43, 7.), SOUTH(29, 15, 30.), 2377e0),
+		# St Andrews University Observatory (1982 Almanac)
+		"ST.ANDREWS": ('St Andrews', WEST(2, 48, 52.5), NORTH(56, 20, 12.), 30e0),
+		# Apache Point 3.5 metre (R.Owen)
+		"APO3.5": ('Apache Point 3.5m', WEST(105, 49, 11.56), NORTH(32, 46, 48.96), 2809e0),
+		# W.M.Keck Observatory, Telescope 1        (William Lupton)
+		"KECK1": ('Keck 10m Telescope #1', WEST(155, 28, 28.99), NORTH(19, 49, 33.41), 4160e0),
+		# Tautenberg Schmidt (1983 Almanac)
+		"TAUTSCHM": ('Tautenberg 1.34 metre Schmidt', EAST(11, 42, 45.0), NORTH(50, 58, 51.0), 331e0),
+		# Palomar Schmidt (1981 Almanac)
+		"PALOMAR48": ('Palomar 48-inch Schmidt', WEST(116, 51, 32.0), NORTH(33, 21, 26.0), 1706e0),
+		# UK Schmidt, Siding Spring (1983 Almanac)
+		"UKST": ('UK 1.2 metre Schmidt, Siding Spring', EAST(149, 4, 12.8), SOUTH(31, 16, 27.8), 1145e0),
+		# Kiso Schmidt, Japan (1981 Almanac)
+		"KISO": ('Kiso 1.05 metre Schmidt, Japan', EAST(137, 37, 42.2), NORTH(35, 47, 38.7), 1130e0),
+		# ESO Schmidt, La Silla (1981 Almanac)
+		"ESOSCHM": ('ESO 1 metre Schmidt, La Silla', WEST(70, 43, 46.5), SOUTH(29, 15, 25.8), 2347e0),
+		# Australia Telescope Compact Array (WGS84 coordinates of Station 35, Mark Calabretta)
+		"ATCA": ('Australia Telescope Compact Array', EAST(149, 33, 0.500), SOUTH(30, 18, 46.385), 236.9e0),
+		# Australia Telescope Mopra Observatory (Peter te Lintel Hekkert)
+		"MOPRA": ('ATNF Mopra Observatory', EAST(149, 5, 58.732), SOUTH(31, 16, 4.451), 850e0),
+		# Subaru telescope, Mauna Kea     (IfA website, Richard Wainscoat)
+		"SUBARU": ('Subaru 8m telescope', WEST(155, 28, 33.67), NORTH(19, 49, 31.81), 4163e0),
+		# Canada-France-Hawaii Telescope, Mauna Kea     (IfA website, Richard Wainscoat)
+		"CFHT": ('Canada-France-Hawaii 3.6m Telescope', WEST(155, 28, 7.95), NORTH(19, 49, 30.91), 4204.1e0),
+		# W.M.Keck Observatory, Telescope 2       (William Lupton)
+		"KECK2": ('Keck 10m Telescope #2', WEST(155, 28, 27.24), NORTH(19, 49, 35.62), 4159.6e0),
+		# Gemini North, Mauna Kea         (IfA website, Richard Wainscoat)
+		"GEMININ": ('Gemini North 8-m telescope', WEST(155, 28, 8.57), NORTH(19, 49, 25.69), 4213.4e0),
+		# Five College Radio Astronomy Observatory     (Tim Jenness)
+		"FCRAO": ('Five College Radio Astronomy Obs', WEST(72, 20, 42.0), NORTH(42, 23, 30.0), 314e0),
+		# NASA Infra Red Telescope Facility  (IfA website, Richard Wainscoat)
+		"IRTF": ('NASA IR Telescope Facility, Mauna Kea', WEST(155, 28, 19.20), NORTH(19, 49, 34.39), 4168.1e0),
+		# Caltech Submillimeter Observatory    (IfA website, Richard Wainscoat; height estimated)
+		"CSO": ('Caltech Sub-mm Observatory, Mauna Kea', WEST(155, 28, 31.79), NORTH(19, 49, 20.78), 4080e0),
+		# ESO VLT, UT1      (ESO website, VLT Whitebook Chapter 2)
+		"VLT1": ('ESO VLT, Paranal, Chile: UT1', WEST(70, 24, 11.642), SOUTH(24, 37, 33.117), 2635.43),
+		# ESO VLT, UT2        (ESO website, VLT Whitebook Chapter 2)
+		"VLT2": ('ESO VLT, Paranal, Chile: UT2', WEST(70, 24, 10.855), SOUTH(24, 37, 31.465), 2635.43),
+		# ESO VLT, UT3  (ESO website, VLT Whitebook Chapter 2)
+		"VLT3": ('ESO VLT, Paranal, Chile: UT3', WEST(70, 24, 9.896), SOUTH(24, 37, 30.300), 2635.43),
+		# ESO VLT, UT4    (ESO website, VLT Whitebook Chapter 2)
+		"VLT4": ('ESO VLT, Paranal, Chile: UT4', WEST(70, 24, 8.000), SOUTH(24, 37, 31.000), 2635.43),
+		# Gemini South, Cerro Pachon       (GPS readings by Patrick Wallace)
+		"GEMINIS": ('Gemini South 8-m telescope', WEST(70, 44, 11.5), SOUTH(30, 14, 26.7), 2738e0),
+		# Cologne Observatory for Submillimeter Astronomy (KOSMA)   (Holger Jakob)
+		"KOSMA3M": ('KOSMA 3m telescope, Gornergrat', EAST(7, 47, 3.48), NORTH(45, 58, 59.772), 3141e0),
+		# Magellan 1, 6.5m telescope at Las Campanas, Chile     (Skip Schaller)
+		"MAGELLAN1": ('Magellan 1, 6.5m, Las Campanas', WEST(70, 41, 31.9), SOUTH(29, 0, 51.7), 2408e0),
+		# Magellan 2, 6.5m telescope at Las Campanas, Chile (Skip Schaller)
+		"MAGELLAN2": ('Magellan 2, 6.5m, Las Campanas', WEST(70, 41, 33.5), SOUTH(29, 0, 50.3), 2408e0),
+	}
+	
+	# Exit
+	name, w, p, h = observatories[c]
+	
+	return c, name, w, p, h

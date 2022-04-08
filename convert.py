@@ -1,37 +1,31 @@
 import argparse
 import json
 import re
+from boltons.setutils import IndexedSet
 from pathlib import Path
-from typing import Iterable
 from string import Template
 
 import autopep8
-from boltons.setutils import IndexedSet
+
+file_args = IndexedSet()
+known_arrs = IndexedSet()
 
 
-def indexset_extend(ind_set: IndexedSet, in_iter: Iterable):
+def ind_set_extend(ind_set, in_iter):
 	for item in in_iter:
 		ind_set.add(item)
 
 
-IndexedSet.extend = indexset_extend
-
-file_args = IndexedSet()
-inputted_files = IndexedSet()
-converted = IndexedSet()
-pyf_info = {}
-
-
 class Transformation:
 	def __init__(self, f_test, py_replace):
-		self.f_t = re.compile(f_test)
+		self.f_t = f_test
 		self.py_r = py_replace
 	
 	def test(self, in_string):
-		return self.f_t.search(in_string) is not None if in_string else False
+		return re.search(self.f_t, in_string) is not None if in_string else False
 	
 	def replace(self, in_string):
-		return self.f_t.sub(self.py_r, in_string)
+		return re.sub(self.f_t, self.py_r, in_string)
 
 
 class TemplateTransformation:
@@ -78,11 +72,12 @@ class CallT(Transformation):
 		if not match:
 			return rv
 		call_fn = match[1].lower()
+		call_fn = call_fn.replace("sla_", "")
 		call_info = pyf_info[call_fn]
 		call_in = call_info['in']
 		call_out = call_info['out']
 		
-		call_fn_args = ",".join([x.strip() for x in match[2].split(",")[:len(call_in)]])
+		call_fn_args = ",".join([x.strip() for x in match[2].split(",")[:(len(call_in) + 1)]])
 		rv = f"{','.join(call_out)} = cls.{call_fn}({call_fn_args})"
 		
 		new_dep = call_fn
@@ -97,10 +92,24 @@ class FuncT(Transformation):
 		rv = super().replace(in_string)
 		match = re.search(r"sla_(\w+)\((.+)\)", rv)
 		fn_args = [x.strip() for x in match[2].split(",")]
-		file_args.extend(fn_args)
-		fn_args = [x.lower() for x in fn_args]
-		fn_args_str = ", ".join(fn_args)
-		rv = re.sub(r"sla_(\w+)\((.+)\)", f'{match[1].lower()}({fn_args_str})', rv)
+		ind_set_extend(file_args, fn_args)
+		
+		call_fn = match[1].lower()
+		call_info = pyf_info[call_fn]
+		ind_set_extend(file_args, call_info['in'])
+		ind_set_extend(file_args, call_info['out'])
+		call_in = ["cls", *call_info['in']]
+		fn_args_str = ",".join([x.strip() for x in call_in])
+		rv = re.sub(r"sla_(\w+)\((.+)\)", f'{call_fn}({fn_args_str})', rv)
+		return rv
+
+
+class ArrDefT(Transformation):
+	def replace(self, in_string):
+		rv = super().replace(in_string)
+		v_name, _ = rv.split("=", 1)
+		v_name = v_name.strip()
+		known_arrs.add(v_name)
 		return rv
 
 
@@ -121,11 +130,10 @@ line_replace = {
 	"do": Transformation(
 		r"DO (\S+)=(\S+),(\S+)", r"for \g<1> in (\g<2>, \g<3>):"
 	),
-	"end": Transformation(r"END (DO|IF)", r""),
+	"end": Transformation(r"END ?(DO|IF)?", r""),
 	"elif": Transformation(r"ELSE IF", r"elif:"),
 	"else": Transformation(r"ELSE", r"else:"),
 	"if": Transformation(r"IF(.+)\sTHEN", r"if\g<1>:"),
-	"sl_if": Transformation(r"IF(.+)\s(.*)\s?=\s?(.*)", r"\g<2> = \g<3> if (\g<1>) else \g<2>"),
 	"lt": Transformation(r" ?\.LT\. ?", r" < "),
 	"gt": Transformation(r" ?\.GT\. ?", r" > "),
 	"eq": Transformation(r" ?\.EQ\. ?", r" == "),
@@ -134,29 +142,33 @@ line_replace = {
 	"neq": Transformation(r" ?\.NE\. ?", r" != "),
 	"and": Transformation(r" ?\.AND\. ?", r" and "),
 	"or": Transformation(r" ?\.OR\. ?", r" or "),
-	"anint": Transformation(r"ANINT", r"np.rint"),
-	"dble": Transformation(r"DBLE", ""),
-	"sqrt": Transformation(r"SQRT", r"np.sqrt"),
-	"sign": Transformation(r"SIGN", r"np.sign"),
-	"nint": Transformation(r"NINT", r"np.rint"),
-	"abs": Transformation(r"ABS", r"np.abs"),
+	"anint": Transformation(r"(\W)ANINT(\W)", r"\g<1>np.rint\g<2>"),
+	"dble": Transformation(r"(\W)DBLE(\W)", "\g<1>\g<2>"),
+	"sqrt": Transformation(r"SQRT\(", r"np.sqrt("),
+	"sign": Transformation(r"SIGN\(", r"np.sign("),
+	"nint": Transformation(r"NINT\(", r"np.rint("),
+	"abs": Transformation(r"ABS\(", r"np.abs("),
 	"cos": Transformation(r"COS\(", r"np.cos("),
 	"sin": Transformation(r"SIN\(", r"np.sin("),
 	"tan": Transformation(r"TAN\(", r"np.tan("),
 	"atan2": Transformation(r"ATAN2\(", r"np.arctan2("),
-	"mod": Transformation(r"MOD", r"np.mod"),
-	"setter": Transformation(r"(\w+)\((\d+)\) = ", r"\g<1>[\g<2>] = "),
-	"max": Transformation(r"MAX", r"np.maximum"),
-	"min": Transformation(r"MIN", "np.minimum"),
-	"end_file": Transformation("END", ""),
+	"mod": Transformation(r"MOD\(", r"np.mod("),
+	"setter": Transformation(r"(\w+) ?\((\d+)\) ?= ?", r"\g<1>[\g<2>] = "),
+	"max": Transformation(r"MAX\(", r"np.maximum("),
+	"min": Transformation(r"MIN\(", "np.minimum("),
+	"arr_def": ArrDefT(r"DATA +(\w+) +/ ([0-9,]+) /", r"\g<1> = [\g<2>]"),
+	"arr_set": ArrDefT(r"DATA +(\w+) +\(([0-9]+)\) +\/ ?([0-9A-Za-z, .'\"_-]+) ?\/", r"\g<1>[\g<2>] = \g<3>"),
 	"implicit_none": Transformation("IMPLICIT NONE", ""),
 	"double_prec": Transformation(r"DOUBLE PRECISION (.+)", r""),
+	"parameter": Transformation(r"PARAMETER ?\((.+)\)", r"\g<1>"),
 	"int": Transformation(r"INTEGER (.+)", r""),
+	"real": Transformation(r"REAL (.+)", r""),
 	"double_constant": Transformation(
 		r"(\d+)(?:D|E)(-?)\+?0*(\d+)", r"\g<1>e\g<2>\g<3>"
 	),
 	"function_call": CallT(r"sla_(\w+) ?\((.+)\)", r"cls.\g<1>(\g<2>)"),
-	"file_return": TemplateTransformation(r"^sla_$cfn = (.+)", r"return \g<1>")
+	"file_return": TemplateTransformation(r"^sla_$cfn = (.+)", r"return \g<1>"),
+	"sl_if": Transformation(r"IF\s?\((.+)\)\s?(.+)\s?=\s?(.+)", r"\g<2> = \g<3> if (\g<1>) else \g<2>"),
 }
 
 # (Local Change, Global Change)
@@ -197,51 +209,64 @@ def first_pass(in_file_lines):
 
 
 def clean_file(in_fn_args, fn_returns, in_file_name, in_file_lines):
-	global file_args
-	f_lines = {fline.strip(): list() for fline in in_file_lines}
-	i_lines = [fline.strip() for fline in in_file_lines]
+	global file_args, known_arrs
+	n_lines = len(in_file_lines)
+	l_list = [f_line.strip() for f_line in in_file_lines]
+	t_list = [list() for _ in range(n_lines)]
 	file_args = IndexedSet(in_fn_args)
-
+	known_arrs = IndexedSet()
+	
 	line_replace['file_return']['cfn'] = in_file_name
-	n_lines = list(range(len(i_lines)))
-	for tk, tt in line_replace.items():
-		for ln in n_lines:
-			ll = f"{i_lines[ln]}"
+	for ln in range(n_lines):
+		ll = l_list[ln]
+		for tk, tt in line_replace.items():
 			if tt.test(ll):
-				f_lines[ll].append(tk)
-
+				t_list[ln].append(tk)
+	
 	o_lines = []
 	cur_ind_lvl = 0
-	for ll, tl in f_lines.items():
-		rvl = ll
+	for l_num, l_trans in enumerate(t_list):
+		tf_line = l_list[l_num]
 		local_change = 0
 		global_change = 0
-		for tk in tl:
+		for tk in l_trans:
 			l_cha, g_cha = indent_change.get(tk, (0, 0))
 			local_change += l_cha
 			global_change += g_cha
-			rvl = line_replace[tk].replace(rvl)
-		rvl = ("\t" * (cur_ind_lvl + local_change)) + rvl
-		o_lines.append(rvl)
+			tf_line = line_replace[tk].replace(tf_line)
+		tf_line = ("\t" * (cur_ind_lvl + local_change)) + tf_line
+		o_lines.append(tf_line)
 		cur_ind_lvl += global_change
-
+	
 	r_str = ','.join(fn_returns)
 	if 'sla_' not in r_str:
 		o_lines.append(f"\t\treturn {','.join(fn_returns)}")
-
+		ind_set_extend(file_args, fn_returns)
+	
 	o_lines = dict(enumerate(o_lines))
-	non_ascii = r"[ *+=\-\)\(\\/]"
+	non_ascii = r"[ *+=\-\)\(\\/,_	]"
+	r_b = r"^"
+	r_e = r"$"
 	while file_args:
 		n_arg = file_args.pop().strip()
 		for oln, ll in o_lines.items():
-			for x in re.findall(f'{non_ascii}{n_arg}{non_ascii}', ll):
-				n_x = x.replace(n_arg, n_arg.lower())
-				ll = ll.replace(x, n_x)
-			for x in re.findall(f'{non_ascii}{n_arg.upper()}{non_ascii}', ll):
-				n_x = x.replace(n_arg.upper(), n_arg.lower())
+			for nu_arg in [n_arg, n_arg.lower(), n_arg.upper()]:
+				for search_str in [f'{non_ascii}{nu_arg}{non_ascii}', f'{r_b}{nu_arg}{non_ascii}', f'{non_ascii}{nu_arg}{r_e}']:
+					for x in re.findall(search_str, ll, re.M):
+						n_x = x.replace(nu_arg, n_arg.lower())
+						ll = ll.replace(x, n_x)
+			o_lines[oln] = ll
+	
+	find_args = r'\([_0-9A-Za-z]+\)'
+	while known_arrs:
+		n_arg = known_arrs.pop()
+		for oln, ll in o_lines.items():
+			search_str = f'{non_ascii}?{n_arg}{find_args}'
+			for x in re.findall(search_str, ll, re.M):
+				n_x = x.replace("(", "[").replace(")", "]")
 				ll = ll.replace(x, n_x)
 			o_lines[oln] = ll
-
+	
 	return list(o_lines.values())
 
 
@@ -316,9 +341,9 @@ if __name__ == "__main__":
 		with open(in_fpa, "r") as if_fp:
 			print("----------------------")
 			print("converting ", in_fpa)
-			input_file_lines = if_fp.read().splitlines()
+			file_lines = if_fp.read().splitlines()
 			
-			file_lines = first_pass(input_file_lines)
+			file_lines = first_pass(file_lines)
 			file_lines = clean_file(pyf_info[in_fn]['in'], pyf_info[in_fn]['out'], in_fn, file_lines)
 			
 			final_file_str = "\n".join(file_lines)
