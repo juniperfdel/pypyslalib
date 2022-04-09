@@ -199,9 +199,9 @@ def first_pass(in_file_lines):
     line_index = 0
     while line_index < len(in_file_lines):
         current_line = in_file_lines[line_index].strip()
-        if re.search(r"^:\s{2,}", current_line) is not None:
+        if re.search(r"^\s*:\s{2,}", current_line) is not None:
             prev_line = in_file_lines[line_index - 1].strip()
-            this_line = re.sub(r"^:\s{2,}", "", current_line).strip()
+            this_line = re.sub(r"^\s*:\s{2,}", "", current_line).strip()
             in_file_lines[line_index - 1] = (prev_line + this_line).strip()
             in_file_lines[line_index] = ""
             line_index -= 1
@@ -248,7 +248,7 @@ def clean_file(in_fn_args, fn_returns, in_file_name, in_file_lines):
         ind_set_extend(file_args, fn_returns)
 
     o_lines = dict(enumerate(o_lines))
-    non_ascii = r"[ *+=\-\)\(\\/,_	]"
+    non_ascii = r"[\[\] *+=\-\)\(\\/,_	]"
     r_b = r"^"
     r_e = r"$"
     while file_args:

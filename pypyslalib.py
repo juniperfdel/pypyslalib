@@ -4488,3 +4488,523 @@ class SLALib:
         jstat = 0
 
         return u, pv, jstat
+
+    @classmethod
+    def tpv2c(cls, xi, eta, v):
+        # +
+        # - - - - - -
+        # T P v 2 C
+        # - - - - - -
+        #
+        # Given the tangent-plane coordinates of a star and its direction
+        # cosines, determine the direction cosines of the tangent-point.
+        #
+        # (single precision)
+        #
+        # Given:
+        # xi,eta    r       tangent plane coordinates of star
+        # v         r(3)    direction cosines of star
+        #
+        # Returned:
+        # v01       r(3)    direction cosines of tangent point, solution 1
+        # v02       r(3)    direction cosines of tangent point, solution 2
+        # n         i       number of solutions:
+        # 0 = no solutions returned (note 2)
+        # 1 = only the first solution is useful (note 3)
+        # 2 = both solutions are useful (note 3)
+        #
+        # Notes:
+        #
+        # 1  The vector v must be of unit length or the result will be wrong.
+        #
+        # 2  Cases where there is no solution can only arise near the poles.
+        # For example, it is clearly impossible for a star at the pole
+        # itself to have a non-zero xi value, and hence it is meaningless
+        # to ask where the tangent point would have to be.
+        #
+        # 3  Also near the poles, cases can arise where there are two useful
+        # solutions.  The argument n indicates whether the second of the
+        # two solutions returned is useful.  n=1 indicates only one useful
+        # solution, the usual case;  under these circumstances, the second
+        # solution can be regarded as valid if the vector v02 is interpreted
+        # as the "over-the-pole" case.
+        #
+        # 4  This routine is the Cartesian equivalent of the routine sla_TPS2C.
+        #
+        # P.T.Wallace   Starlink   5 June 1995
+        #
+        # Copyright (C) 1995 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+
+        X = v[1]
+        Y = v[2]
+        Z = v[3]
+        RXY2 = X * X + Y * Y
+        XI2 = xi * xi
+        ETA2P1 = eta * eta + 1.0
+        SDF = Z * np.sqrt(XI2 + ETA2P1)
+        R2 = RXY2 * ETA2P1 - Z * Z * XI2
+        v01 = np.zeros(3)
+        v02 = np.zeros(3)
+        if R2 > 0.0:
+            R = np.sqrt(R2)
+            C = (SDF * eta + R) / (ETA2P1 * np.sqrt(RXY2 * (R2 + XI2)))
+            v01[1] = C * (X * R + Y * xi)
+            v01[2] = C * (Y * R - X * xi)
+            v01[3] = (SDF - eta * R) / ETA2P1
+            R = -R
+            C = (SDF * eta + R) / (ETA2P1 * np.sqrt(RXY2 * (R2 + XI2)))
+            v02[1] = C * (X * R + Y * xi)
+            v02[2] = C * (Y * R - X * xi)
+            v02[3] = (SDF - eta * R) / ETA2P1
+            n = 1 if np.abs(SDF) < 1.0 else 2
+        else:
+            n = 0
+        return v01, v02, n
+
+    @classmethod
+    def ue2el(cls, u, jformr):
+        # +
+        # - - - - - -
+        # u e 2 e L
+        # - - - - - -
+        #
+        # Transform universal elements into conventional heliocentric
+        # osculating elements.
+        #
+        # Given:
+        # u         d(13)  universal orbital elements (Note 1)
+        #
+        # (1)  combined mass (M+m)
+        # (2)  total energy of the orbit (alpha)
+        # (3)  reference (osculating) epoch (t0)
+        # (4-6)  position at reference epoch (r0)
+        # (7-9)  velocity at reference epoch (v0)
+        # (10)  heliocentric distance at reference epoch
+        # (11)  r0.v0
+        # (12)  date (t)
+        # (13)  universal eccentric anomaly (psi) of date, approx
+        #
+        # jformr    i      requested element set (1-3; Note 3)
+        #
+        # Returned:
+        # jform     d      element set actually returned (1-3; Note 4)
+        # epoch     d      epoch of elements (TT MJD)
+        # orbinc    d      inclination (radians)
+        # anode     d      longitude of the ascending node (radians)
+        # perih     d      longitude or argument of perihelion (radians)
+        # aorq      d      mean distance or perihelion distance (AU)
+        # e         d      eccentricity
+        # aorl      d      mean anomaly or longitude (radians, jform=1,2 only)
+        # dm        d      daily motion (radians, jform=1 only)
+        # jstat     i      status:  0 = OK
+        # -1 = illegal combined mass
+        # -2 = illegal jformr
+        # -3 = position/velocity out of range
+        #
+        # Notes
+        #
+        # 1  The "universal" elements are those which define the orbit for the
+        # purposes of the method of universal variables (see reference 2).
+        # They consist of the combined mass of the two bodies, an epoch,
+        # and the position and velocity vectors (arbitrary reference frame)
+        # at that epoch.  The parameter set used here includes also various
+        # quantities that can, in fact, be derived from the other
+        # information.  This approach is taken to avoiding unnecessary
+        # computation and loss of accuracy.  The supplementary quantities
+        # are (i) alpha, which is proportional to the total energy of the
+        # orbit, (ii) the heliocentric distance at epoch, (iii) the
+        # outwards component of the velocity at the given epoch, (iv) an
+        # estimate of psi, the "universal eccentric anomaly" at a given
+        # date and (v) that date.
+        #
+        # 2  The universal elements are with respect to the mean equator and
+        # equinox of epoch J2000.  The orbital elements produced are with
+        # respect to the J2000 ecliptic and mean equinox.
+        #
+        # 3  Three different element-format options are supported:
+        #
+        # Option jform=1, suitable for the major planets:
+        #
+        # epoch  = epoch of elements (TT MJD)
+        # orbinc = inclination i (radians)
+        # anode  = longitude of the ascending node, big omega (radians)
+        # perih  = longitude of perihelion, curly pi (radians)
+        # aorq   = mean distance, a (AU)
+        # e      = eccentricity, e
+        # aorl   = mean longitude L (radians)
+        # dm     = daily motion (radians)
+        #
+        # Option jform=2, suitable for minor planets:
+        #
+        # epoch  = epoch of elements (TT MJD)
+        # orbinc = inclination i (radians)
+        # anode  = longitude of the ascending node, big omega (radians)
+        # perih  = argument of perihelion, little omega (radians)
+        # aorq   = mean distance, a (AU)
+        # e      = eccentricity, e
+        # aorl   = mean anomaly M (radians)
+        #
+        # Option jform=3, suitable for comets:
+        #
+        # epoch  = epoch of perihelion (TT MJD)
+        # orbinc = inclination i (radians)
+        # anode  = longitude of the ascending node, big omega (radians)
+        # perih  = argument of perihelion, little omega (radians)
+        # aorq   = perihelion distance, q (AU)
+        # e      = eccentricity, e
+        #
+        # 4  It may not be possible to generate elements in the form
+        # requested through JFORMR.  The caller is notified of the form
+        # of elements actually returned by means of the jform argument:
+        #
+        # jformr   jform     meaning
+        #
+        # 1        1       OK - elements are in the requested format
+        # 1        2       never happens
+        # 1        3       orbit not elliptical
+        #
+        # 2        1       never happens
+        # 2        2       OK - elements are in the requested format
+        # 2        3       orbit not elliptical
+        #
+        # 3        1       never happens
+        # 3        2       never happens
+        # 3        3       OK - elements are in the requested format
+        #
+        # 5  The arguments returned for each value of jform (cf Note 6: jform
+        # may not be the same as jformr) are as follows:
+        #
+        # jform         1              2              3
+        # epoch         t0             t0             T
+        # orbinc        i              i              i
+        # anode         Omega          Omega          Omega
+        # perih         curly pi       omega          omega
+        # aorq          a              a              q
+        # e             e              e              e
+        # aorl          L              M              -
+        # dm            n              -              -
+        #
+        # where:
+        #
+        # t0           is the epoch of the elements (MJD, TT)
+        # T              "    epoch of perihelion (MJD, TT)
+        # i              "    inclination (radians)
+        # Omega          "    longitude of the ascending node (radians)
+        # curly pi       "    longitude of perihelion (radians)
+        # omega          "    argument of perihelion (radians)
+        # a              "    mean distance (AU)
+        # q              "    perihelion distance (AU)
+        # e              "    eccentricity
+        # L              "    longitude (radians, 0-2pi)
+        # M              "    mean anomaly (radians, 0-2pi)
+        # n              "    daily motion (radians)
+        # -             means no value is set
+        #
+        # 6  At very small inclinations, the longitude of the ascending node
+        # anode becomes indeterminate and under some circumstances may be
+        # set arbitrarily to zero.  Similarly, if the orbit is close to
+        # circular, the true anomaly becomes indeterminate and under some
+        # circumstances may be set arbitrarily to zero.  In such cases,
+        # the other elements are automatically adjusted to compensate,
+        # and so the elements remain a valid description of the orbit.
+        #
+        # References:
+        #
+        # 1  Sterne, Theodore E., "An Introduction to Celestial Mechanics",
+        # Interscience Publishers Inc., 1960.  Section 6.7, p199.
+        #
+        # 2  Everhart, E. & Pitkin, E.T., Am.J.Phys. 51, 712, 1983.
+        #
+        # Depends:  sla_PV2EL
+        #
+        # P.T.Wallace   Starlink   18 March 1999
+        #
+        # Copyright (C) 1999 Rutherford Appleton Laboratory
+        # -
+
+        # Gaussian gravitational constant (exact)
+
+        GCON = 0.01720209895e0
+
+        # Canonical days to seconds
+
+        CD2S = GCON / 86400e0
+
+        # Unpack the universal elements.
+        PMASS = u[1] - 1e0
+        DATE = u[3]
+        PV = np.zeros(6)
+        PV[:3] = u
+        PV[3:] = u[3:6] * CD2S
+
+        # Convert the position and velocity etc into conventional elements.
+        jform, epoch, orbinc, anode, perih, aorq, e, aorl, dm, jstat = cls.pv2el(
+            PV, DATE, PMASS, jformr, jform
+        )
+
+        return jform, epoch, orbinc, anode, perih, aorq, e, aorl, dm, jstat
+
+    @classmethod
+    def tp2v(cls, xi, eta, v0):
+        # +
+        # - - - - -
+        # T P 2 v
+        # - - - - -
+        #
+        # Given the tangent-plane coordinates of a star and the direction
+        # cosines of the tangent point, determine the direction cosines
+        # of the star.
+        #
+        # (single precision)
+        #
+        # Given:
+        # xi,eta    r       tangent plane coordinates of star
+        # v0        r(3)    direction cosines of tangent point
+        #
+        # Returned:
+        # v         r(3)    direction cosines of star
+        #
+        # Notes:
+        #
+        # 1  If vector v0 is not of unit length, the returned vector v will
+        # be wrong.
+        #
+        # 2  If vector v0 points at a pole, the returned vector v will be
+        # based on the arbitrary assumption that the RA of the tangent
+        # point is zero.
+        #
+        # 3  This routine is the Cartesian equivalent of the routine sla_TP2S.
+        #
+        # P.T.Wallace   Starlink   11 February 1995
+        #
+        # Copyright (C) 1995 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+
+        X = v0[1]
+        Y = v0[2]
+        Z = v0[3]
+        F = np.sqrt(1.0 + xi * xi + eta * eta)
+        R = np.sqrt(X * X + Y * Y)
+        if R == 0.0:
+            R = 1e-20
+            X = R
+
+        v = np.zeros(3)
+        v[1] = (X - (xi * Y + eta * X * Z) / R) / F
+        v[2] = (Y + (xi * X - eta * Y * Z) / R) / F
+        v[3] = (Z + eta * R) / F
+
+        return v
+
+    @classmethod
+    def tps2c(cls, xi, eta, ra, dec):
+
+        # +
+        # - - - - - -
+        # T P S 2 C
+        # - - - - - -
+        #
+        # From the tangent plane coordinates of a star of known ra,Dec,
+        # determine the ra,Dec of the tangent point.
+        #
+        # (single precision)
+        #
+        # Given:
+        # xi,eta      r    tangent plane rectangular coordinates
+        # ra,dec      r    spherical coordinates
+        #
+        # Returned:
+        # raz1,decz1  r    spherical coordinates of tangent point, solution 1
+        # raz2,decz2  r    spherical coordinates of tangent point, solution 2
+        # n           i    number of solutions:
+        # 0 = no solutions returned (note 2)
+        # 1 = only the first solution is useful (note 3)
+        # 2 = both solutions are useful (note 3)
+        #
+        # Notes:
+        #
+        # 1  The raz1 and raz2 values are returned in the range 0-2pi.
+        #
+        # 2  Cases where there is no solution can only arise near the poles.
+        # For example, it is clearly impossible for a star at the pole
+        # itself to have a non-zero xi value, and hence it is
+        # meaningless to ask where the tangent point would have to be
+        # to bring about this combination of xi and DEC.
+        #
+        # 3  Also near the poles, cases can arise where there are two useful
+        # solutions.  The argument n indicates whether the second of the
+        # two solutions returned is useful.  n=1 indicates only one useful
+        # solution, the usual case;  under these circumstances, the second
+        # solution corresponds to the "over-the-pole" case, and this is
+        # reflected in the values of raz2 and decz2 which are returned.
+        #
+        # 4  The decz1 and decz2 values are returned in the range +/-pi, but
+        # in the usual, non-pole-crossing, case, the range is +/-pi/2.
+        #
+        # 5  This routine is the spherical equivalent of the routine sla_DTPV2C.
+        #
+        # Depends:  sla_RANORM
+        #
+        # P.T.Wallace   Starlink   5 June 1995
+        #
+        # Copyright (C) 1995 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+
+        X2 = xi * xi
+        Y2 = eta * eta
+        SD = np.sin(dec)
+        CD = np.cos(dec)
+        SDF = SD * np.sqrt(1.0 + X2 + Y2)
+        R2 = CD * CD * (1.0 + Y2) - SD * SD * X2
+        if R2 >= 0.0:
+            R = np.sqrt(R2)
+            S = SDF - eta * R
+            C = SDF * eta + R
+            R = 1.0 if (xi == 0.0 and R == 0.0) else R
+            raz1 = cls.ranorm(ra - np.arctan2(xi, R))
+            decz1 = np.arctan2(S, C)
+            R = -R
+            S = SDF - eta * R
+            C = SDF * eta + R
+            raz2 = cls.ranorm(ra - np.arctan2(xi, R))
+            decz2 = np.arctan2(S, C)
+            n = 1 if np.abs(SDF) < 1.0 else 2
+        else:
+            n = 0
+
+        return raz1, decz1, raz2, decz2, n
+
+    @classmethod
+    def tp2s(cls, xi, eta, raz, decz):
+        # +
+        # - - - - -
+        # T P 2 S
+        # - - - - -
+        #
+        # Transform tangent plane coordinates into spherical
+        # (single precision)
+        #
+        # Given:
+        # xi,eta      real  tangent plane rectangular coordinates
+        # raz,decz    real  spherical coordinates of tangent point
+        #
+        # Returned:
+        # ra,dec      real  spherical coordinates (0-2pi,+/-pi/2)
+        #
+        # Depends:        sla_RANORM
+        #
+        # P.T.Wallace   Starlink   24 July 1995
+        #
+        # Copyright (C) 1995 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+
+        SDECZ = np.sin(decz)
+        CDECZ = np.cos(decz)
+
+        DENOM = CDECZ - eta * SDECZ
+
+        ra = cls.ranorm(np.arctan2(xi, DENOM) + raz)
+        dec = np.arctan2(SDECZ + eta * CDECZ, np.sqrt(xi * xi + DENOM * DENOM))
+
+        return ra, dec
+    
+    @classmethod
+    def svdsol(cls, m, n, mp, nnp, b, u, w, v):
+        # +
+        # - - - - - - -
+        # S v D S O L
+        # - - - - - - -
+        #
+        # From a given vector and the SVD of a matrix (as obtained from
+        # the SVD routine), obtain the solution vector (double precision)
+        #
+        # This routine solves the equation:
+        #
+        # A . x = b
+        #
+        # where:
+        #
+        # A   is a given m (rows) x n (columns) matrix, where m >= n
+        # x   is the n-vector we wish to find
+        # b   is a given m-vector
+        #
+        # by means of the Singular Value Decomposition method (SVD).  In
+        # this method, the matrix A is first factorised (for example by
+        # the routine sla_SVD) into the following components:
+        #
+        # A = u x w x VT
+        #
+        # where:
+        #
+        # A   is the m (rows) x n (columns) matrix
+        # u   is an m x n column-orthogonal matrix
+        # w   is an n x n diagonal matrix with w(I,I) >= 0
+        # VT  is the transpose of an NxN orthogonal matrix
+        #
+        # Note that m and n, above, are the LOGICAL dimensions of the
+        # matrices and vectors concerned, which can be located in
+        # arrays of larger PHYSICAL dimensions mp and NP.
+        #
+        # The solution is found from the expression:
+        #
+        # x = v . [diag(1/Wj)] . (transpose(u) . b)
+        #
+        # Notes:
+        #
+        # 1)  If matrix A is square, and if the diagonal matrix w is not
+        # adjusted, the method is equivalent to conventional solution
+        # of simultaneous equations.
+        #
+        # 2)  If M>N, the result is a least-squares fit.
+        #
+        # 3)  If the solution is poorly determined, this shows up in the
+        # SVD factorisation as very small or zero Wj values.  Where
+        # a Wj value is small but non-zero it can be set to zero to
+        # avoid ill effects.  The present routine detects such zero
+        # Wj values and produces a sensible solution, with highly
+        # correlated terms kept under control rather than being allowed
+        # to elope to infinity, and with meaningful values for the
+        # other terms.
+        #
+        # Given:
+        # m,n    i         numbers of rows and columns in matrix A
+        # mp,np  i         physical dimensions of array containing matrix A
+        # b      d(m)      known vector b
+        # u      d(mp,np)  array containing MxN matrix u
+        # w      d(n)      NxN diagonal matrix w (diagonal elements only)
+        # v      d(np,np)  array containing NxN orthogonal matrix v
+        #
+        # Returned:
+        # work   d(n)      workspace
+        # x      d(n)      unknown vector x
+        #
+        # Reference:
+        # Numerical Recipes, section 2.9.
+        #
+        # P.T.Wallace   Starlink   29 October 1993
+        #
+        # Copyright (C) 1995 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+        
+        # Calculate [diag(1/Wj)] . transpose(u) . b (or zero for zero Wj)
+        work = np.linalg.multi_dot([np.diag(1 / w), u.T, b])
+        
+        # Multiply by matrix v to get result
+        x = work @ v
+        return work, x
