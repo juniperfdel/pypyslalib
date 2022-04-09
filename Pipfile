@@ -6,3 +6,5 @@ name = "pypi"
 [packages]
 numpy = "*"
 autopep8 = "*"
+black = "*"
+boltons = "*"
