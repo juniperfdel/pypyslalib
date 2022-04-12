@@ -1,5 +1,4 @@
 import numpy as np
-import time
 
 
 class SLALib:
@@ -3017,7 +3016,7 @@ class SLALib:
         return xi, eta, j
 
     @classmethod
-    def afin(cls, string, iptr):
+    def afin(cls, string, iptr, a, j):
         # +
         # - - - - -
         # a F I N
@@ -3212,6 +3211,96 @@ class SLALib:
         # Copyright (c) 2002 Rutherford Appleton Laboratory
         # -
         AS2R = 0.484813681109535994e-5
+
+        # Table of station identifiers
+        CTAB = [
+            "AAT",
+            "LPO4.2",
+            "LPO2.5",
+            "LPO1",
+            "LICK120",
+            "MMT",
+            "DAO72",
+            "DUPONT",
+            "MTHOP1.5",
+            "STROMLO74",
+            "ANU2.3",
+            "GBVA140",
+            "TOLOLO4M",
+            "TOLOLO1.5M",
+            "TIDBINBLA",
+            "BLOEMF",
+            "BOSQALEGRE",
+            "FLAGSTF61",
+            "LOWELL72",
+            "HARVARD",
+            "OKAYAMA",
+            "KPNO158",
+            "KPNO90",
+            "KPNO84",
+            "KPNO36FT",
+            "KOTTAMIA",
+            "ESO3.6",
+            "MAUNAK88",
+            "UKIRT",
+            "QUEBEC1.6",
+            "MTEKAR",
+            "MTLEMMON60",
+            "MCDONLD2.7",
+            "MCDONLD2.1",
+            "PALOMAR200",
+            "PALOMAR60",
+            "DUNLAP74",
+            "HPROV1.93",
+            "HPROV1.52",
+            "SANPM83",
+            "SAAO74",
+            "TAUTNBG",
+            "CATALINA61",
+            "STEWARD90",
+            "USSR6",
+            "ARECIBO",
+            "CAMB5KM",
+            "CAMB1MILE",
+            "EFFELSBERG",
+            "GBT",
+            "JODRELL1",
+            "PARKES",
+            "VLA",
+            "SUGARGROVE",
+            "USSR600",
+            "NOBEYAMA",
+            "JCMT",
+            "ESONTT",
+            "ST.ANDREWS",
+            "APO3.5",
+            "KECK1",
+            "TAUTSCHM",
+            "PALOMAR48",
+            "UKST",
+            "KISO",
+            "ESOSCHM",
+            "ATCA",
+            "MOPRA",
+            "SUBARU",
+            "CFHT",
+            "KECK2",
+            "GEMININ",
+            "FCRAO",
+            "IRTF",
+            "CSO",
+            "VLT1",
+            "VLT2",
+            "VLT3",
+            "VLT4",
+            "GEMINIS",
+            "KOSMA3M",
+            "MAGELLAN1",
+            "MAGELLAN2",
+        ]
+
+        if n is not None:
+            c = CTAB[n]
 
         # Degrees, arcminutes, arcseconds to radians
         WEST = lambda ID, IAM, AS: AS2R * ((60 * (60 * ID + IAM)) + AS)
@@ -3789,9 +3878,7 @@ class SLALib:
         }
 
         # Exit
-        if n is not None:
-            c = list(observatories.keys())[n]
-        name, w, p, h = observatories.get(n, ("?", None, None, None))
+        name, w, p, h = observatories.get(c, ("?", None, None, None))
 
         return c, name, w, p, h
 
@@ -3985,7 +4072,7 @@ class SLALib:
 
         # Normalize the vector
         vm = 1.0 if (vm <= 0.0) else vm
-        uv = v/vm
+        uv = v / vm
 
         return uv, vm
 
@@ -4017,8 +4104,8 @@ class SLALib:
         #    The sla_vers subroutine was introduced in SLALIB version 2.5-1, so
         #    if this function is absent, one can only tell that the release
         #    predates that one.
-        return '2.5-4'
-    
+        return "2.5-4"
+
     @classmethod
     def veri(cls):
         # +
@@ -4129,12 +4216,12 @@ class SLALib:
             D = -TINY
         else:
             j = 3
-        
+
         D = D * R
         xi = (Y * X0 - X * Y0) / D
         eta = (Z * R2 - Z0 * W) / D
         return xi, eta, j
-    
+
     @classmethod
     def unpcd(cls, disco, x, y):
         # +
@@ -4238,9 +4325,9 @@ class SLALib:
             F = F / RP
             x = F * x
             y = F * y
-        
+
         return x, y
-    
+
     @classmethod
     def ue2pv(cls, date, u):
         # +
@@ -4805,7 +4892,6 @@ class SLALib:
 
     @classmethod
     def tps2c(cls, xi, eta, ra, dec):
-
         # +
         # - - - - - -
         # T P S 2 C
@@ -4920,7 +5006,7 @@ class SLALib:
         dec = np.arctan2(SDECZ + eta * CDECZ, np.sqrt(xi * xi + DENOM * DENOM))
 
         return ra, dec
-    
+
     @classmethod
     def svdsol(cls, m, n, mp, nnp, b, u, w, v):
         # +
@@ -5001,10 +5087,10 @@ class SLALib:
         #
         #
         # -
-        
+
         # Calculate [diag(1/Wj)] . transpose(u) . b (or zero for zero Wj)
         work = np.linalg.multi_dot([np.diag(1 / w), u.T, b])
-        
+
         # Multiply by matrix v to get result
         x = work @ v
         return work, x

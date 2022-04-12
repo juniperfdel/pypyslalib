@@ -157,8 +157,13 @@ line_replace = {
     "max": Transformation(r"MAX\(", r"np.maximum("),
     "min": Transformation(r"MIN\(", "np.minimum("),
     "arr_def": ArrDefT(r"DATA +(\w+) +/ ([0-9,]+) /", r"\g<1> = [\g<2>]"),
-    "arr_set": ArrDefT(r"DATA +(\w+) +\(([0-9]+)\) +\/ ?([0-9A-Za-z, .'\"_-]+) ?\/", r"\g<1>[\g<2>] = \g<3>"),
-    "arr_get": Transformation(r"(\w+) ?= ?(\w+) ?\(([0-9]+)\)", r"\g<1> = \g<2>[\g<3>]"),
+    "arr_set": ArrDefT(
+        r"DATA +(\w+) +\(([0-9]+)\) +\/ ?([0-9A-Za-z, .'\"_-]+) ?\/",
+        r"\g<1>[\g<2>] = \g<3>",
+    ),
+    "arr_get": Transformation(
+        r"(\w+) ?= ?(\w+) ?\(([0-9]+)\)", r"\g<1> = \g<2>[\g<3>]"
+    ),
     "implicit_none": Transformation("IMPLICIT NONE", ""),
     "double_prec": Transformation(r"DOUBLE PRECISION (.+)", r""),
     "parameter": Transformation(r"PARAMETER ?\((.+)\)", r"\g<1>"),
@@ -170,7 +175,8 @@ line_replace = {
     "function_call": CallT(r"sla_(\w+) ?\((.+)\)", r"cls.\g<1>(\g<2>)"),
     "file_return": TemplateTransformation(r"^\s*sla_$cfn\s+=\s+(.+)", r"return \g<1>"),
     "sl_if": Transformation(
-        r"(?<!ELSE )IF\s?\((.+)\)\s?(.+)\s?=\s?(.+)", r"\g<2> = \g<3> if (\g<1>) else \g<2>"
+        r"(?<!ELSE )IF\s?\((.+)\)\s?(.+)\s?=\s?(.+)",
+        r"\g<2> = \g<3> if (\g<1>) else \g<2>",
     ),
 }
 
@@ -199,9 +205,9 @@ def first_pass(in_file_lines):
     line_index = 0
     while line_index < len(in_file_lines):
         current_line = in_file_lines[line_index].strip()
-        if re.search(r"^\s*:\s{2,}", current_line) is not None:
+        if re.search(r"^:\s{2,}", current_line) is not None:
             prev_line = in_file_lines[line_index - 1].strip()
-            this_line = re.sub(r"^\s*:\s{2,}", "", current_line).strip()
+            this_line = re.sub(r"^:\s{2,}", "", current_line).strip()
             in_file_lines[line_index - 1] = (prev_line + this_line).strip()
             in_file_lines[line_index] = ""
             line_index -= 1
@@ -210,6 +216,38 @@ def first_pass(in_file_lines):
         line_index += 1
 
     return output_lines
+
+
+def clean_fn_args(in_olines):
+    non_ascii = r"[ *+=\-\)\(\\/,_	]"
+    r_b = r"^"
+    r_e = r"$"
+    while file_args:
+        n_arg = file_args.pop().strip()
+        for oln, ll in in_olines.items():
+            for nu_arg in [n_arg, n_arg.lower(), n_arg.upper()]:
+                for search_str in [
+                    f"{non_ascii}{nu_arg}{non_ascii}",
+                    f"{r_b}{nu_arg}{non_ascii}",
+                    f"{non_ascii}{nu_arg}{r_e}",
+                ]:
+                    for x in re.findall(search_str, ll, re.M):
+                        n_x = x.replace(nu_arg, n_arg.lower())
+                        ll = ll.replace(x, n_x)
+            in_olines[oln] = ll
+
+
+def clean_fn_arr(in_olines):
+    non_ascii = r"[ *+=\-\)\(\\/,_	]"
+    find_args = r"\([_0-9A-Za-z]+\)"
+    while known_arrs:
+        n_arg = known_arrs.pop()
+        for oln, ll in in_olines.items():
+            search_str = f"{non_ascii}?{n_arg}{find_args}"
+            for x in re.findall(search_str, ll, re.M):
+                n_x = x.replace("(", "[").replace(")", "]")
+                ll = ll.replace(x, n_x)
+            in_olines[oln] = ll
 
 
 def clean_file(in_fn_args, fn_returns, in_file_name, in_file_lines):
@@ -248,32 +286,8 @@ def clean_file(in_fn_args, fn_returns, in_file_name, in_file_lines):
         ind_set_extend(file_args, fn_returns)
 
     o_lines = dict(enumerate(o_lines))
-    non_ascii = r"[\[\] *+=\-\)\(\\/,_	]"
-    r_b = r"^"
-    r_e = r"$"
-    while file_args:
-        n_arg = file_args.pop().strip()
-        for oln, ll in o_lines.items():
-            for nu_arg in [n_arg, n_arg.lower(), n_arg.upper()]:
-                for search_str in [
-                    f"{non_ascii}{nu_arg}{non_ascii}",
-                    f"{r_b}{nu_arg}{non_ascii}",
-                    f"{non_ascii}{nu_arg}{r_e}",
-                ]:
-                    for x in re.findall(search_str, ll, re.M):
-                        n_x = x.replace(nu_arg, n_arg.lower())
-                        ll = ll.replace(x, n_x)
-            o_lines[oln] = ll
-
-    find_args = r"\([_0-9A-Za-z]+\)"
-    while known_arrs:
-        n_arg = known_arrs.pop()
-        for oln, ll in o_lines.items():
-            search_str = f"{non_ascii}?{n_arg}{find_args}"
-            for x in re.findall(search_str, ll, re.M):
-                n_x = x.replace("(", "[").replace(")", "]")
-                ll = ll.replace(x, n_x)
-            o_lines[oln] = ll
+    clean_fn_args(o_lines)
+    clean_fn_arr(o_lines)
 
     return list(o_lines.values())
 

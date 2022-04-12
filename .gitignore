@@ -3,3 +3,4 @@ converted/*
 .idea
 __pycache__
 *.bak
+Pipfile.lock
