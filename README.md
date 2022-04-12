@@ -1,6 +1,6 @@
 # PyPySLALib
 
-### Number converted: 58 /  209
+### Number converted: 68 /  209
 
 ## Introduction
 An attempt to convert the very good [SLALIB](http://star-www.rl.ac.uk/docs/sun67.htx/sun67.html) into 
@@ -12,10 +12,10 @@ use [pycharm community edition](https://www.jetbrains.com/pycharm/download/) ref
 the formatting. While this requires some hand's on work, the `convert.py` reduces the workload substantially.
 
 ### Transpiling?
-Writing a full transpiler, while possible (convert Fortan 77 to an AST then back to python code); would probably take 
-more work than using simple string substitution and manual re-writing; as some stuff like `GOTO` (and recognizing which
-arguments are being used as output) requires a bit of cleverness to properly convert and/or work around. 
-It runs into the problem of [automating re-writing is slower than just re-writing it with some string substitutions 
+Writing a full transpiler, would probably take 
+more work than using string substitution and manual re-writing, as fortran can do some crazy stuff; and while 
+it's easy for a human to see what the program is doing, having a program figure it out would be a huge endeavor. 
+It runs into the problem of [automating re-writing is slower than just re-writing it with string substitutions 
 for some common manipulations.](https://xkcd.com/1319/)
 
 ### Doc-Strings?

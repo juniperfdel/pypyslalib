@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 
 
@@ -3923,8 +3925,8 @@ class SLALib:
         # Copyright (C) 1995 Rutherford Appleton Laboratory
         # -
 
-        x2 = coeffs[1] + coeffs[2] * x1 + coeffs[3] * y1
-        y2 = coeffs[4] + coeffs[5] * x1 + coeffs[6] * y1
+        x2 = coeffs[0] + coeffs[1] * x1 + coeffs[2] * y1
+        y2 = coeffs[3] + coeffs[4] * x1 + coeffs[5] * y1
 
         return x2, y2
 
@@ -4009,9 +4011,7 @@ class SLALib:
         #
         # Copyright (C) 1998 Rutherford Appleton Laboratory
         # -
-
         time.sleep(np.rint(delay))
-
         return
 
     @classmethod
@@ -4420,16 +4420,16 @@ class SLALib:
         TEST = 1e-13
         NITMAX = 25
         # Unpack the parameters.
-        CM = u[1]
-        ALPHA = u[2]
-        T0 = u[3]
+        CM = u[0]
+        ALPHA = u[1]
+        T0 = u[2]
         P0 = u[3:6]
         V0 = u[6:9]
 
-        R0 = u[10]
-        SIGMA0 = u[11]
-        T = u[12]
-        PSI = u[13]
+        R0 = u[9]
+        SIGMA0 = u[10]
+        T = u[11]
+        PSI = u[12]
 
         # Approximately update the universal eccentric anomaly.
         PSI = PSI + (date - T) * GCON / R0
@@ -4568,8 +4568,8 @@ class SLALib:
             pv[3:] = CD2S * (P0 * FD + V0 * GD)
 
         # Update the parameters to allow speedy prediction of PSI next time.
-        u[12] = date
-        u[13] = PSI
+        u[11] = date
+        u[12] = PSI
 
         # OK exit.
         jstat = 0
@@ -4626,9 +4626,9 @@ class SLALib:
         #
         # -
 
-        X = v[1]
-        Y = v[2]
-        Z = v[3]
+        X = v[0]
+        Y = v[1]
+        Z = v[2]
         RXY2 = X * X + Y * Y
         XI2 = xi * xi
         ETA2P1 = eta * eta + 1.0
@@ -4639,14 +4639,14 @@ class SLALib:
         if R2 > 0.0:
             R = np.sqrt(R2)
             C = (SDF * eta + R) / (ETA2P1 * np.sqrt(RXY2 * (R2 + XI2)))
-            v01[1] = C * (X * R + Y * xi)
-            v01[2] = C * (Y * R - X * xi)
-            v01[3] = (SDF - eta * R) / ETA2P1
+            v01[0] = C * (X * R + Y * xi)
+            v01[1] = C * (Y * R - X * xi)
+            v01[2] = (SDF - eta * R) / ETA2P1
             R = -R
             C = (SDF * eta + R) / (ETA2P1 * np.sqrt(RXY2 * (R2 + XI2)))
-            v02[1] = C * (X * R + Y * xi)
-            v02[2] = C * (Y * R - X * xi)
-            v02[3] = (SDF - eta * R) / ETA2P1
+            v02[0] = C * (X * R + Y * xi)
+            v02[1] = C * (Y * R - X * xi)
+            v02[2] = (SDF - eta * R) / ETA2P1
             n = 1 if np.abs(SDF) < 1.0 else 2
         else:
             n = 0
@@ -4822,8 +4822,8 @@ class SLALib:
         CD2S = GCON / 86400e0
 
         # Unpack the universal elements.
-        PMASS = u[1] - 1e0
-        DATE = u[3]
+        PMASS = u[0] - 1e0
+        DATE = u[2]
         PV = np.zeros(6)
         PV[:3] = u
         PV[3:] = u[3:6] * CD2S
@@ -4874,9 +4874,9 @@ class SLALib:
         #
         # -
 
-        X = v0[1]
-        Y = v0[2]
-        Z = v0[3]
+        X = v0[0]
+        Y = v0[1]
+        Z = v0[2]
         F = np.sqrt(1.0 + xi * xi + eta * eta)
         R = np.sqrt(X * X + Y * Y)
         if R == 0.0:
@@ -4884,9 +4884,9 @@ class SLALib:
             X = R
 
         v = np.zeros(3)
-        v[1] = (X - (xi * Y + eta * X * Z) / R) / F
-        v[2] = (Y + (xi * X - eta * Y * Z) / R) / F
-        v[3] = (Z + eta * R) / F
+        v[0] = (X - (xi * Y + eta * X * Z) / R) / F
+        v[1] = (Y + (xi * X - eta * Y * Z) / R) / F
+        v[2] = (Z + eta * R) / F
 
         return v
 
@@ -5094,3 +5094,939 @@ class SLALib:
         # Multiply by matrix v to get result
         x = work @ v
         return work, x
+
+    @classmethod
+    def ctf2r(cls, ihour, imin, sec):
+        # +
+        # - - - - - -
+        # C T F 2 R
+        # - - - - - -
+        #
+        # Convert hours, minutes, seconds to radians (single precision)
+        #
+        # Given:
+        # ihour       int       hours
+        # imin        int       minutes
+        # sec         real      seconds
+        #
+        # Returned:
+        # rad         real      angle in radians
+        # j           int       status:  0 = OK
+        # 1 = ihour outside range 0-23
+        # 2 = imin outside range 0-59
+        # 3 = sec outside range 0-59.999...
+        #
+        # Called:
+        # sla_CTF2D
+        #
+        # Notes:
+        #
+        # 1)  The result is computed even if any of the range checks
+        # fail.
+        #
+        # 2)  The sign must be dealt with outside this routine.
+        #
+        # P.T.Wallace   Starlink   November 1984
+        #
+        # Copyright (C) 1995 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+
+        # Turns to radians
+
+        T2R = 6.283185307179586476925287
+
+        # Convert to turns then radians
+        days, j = cls.ctf2d(ihour, imin, sec, TURNS)
+        rad = T2R * TURNS
+
+        return rad, j
+
+    @classmethod
+    def dtf2r(cls, ihour, imin, sec):
+        # +
+        # - - - - - -
+        # D T F 2 R
+        # - - - - - -
+        #
+        # Convert hours, minutes, seconds to radians (double precision)
+        #
+        # Given:
+        # ihour       int       hours
+        # imin        int       minutes
+        # sec         dp        seconds
+        #
+        # Returned:
+        # rad         dp        angle in radians
+        # j           int       status:  0 = OK
+        # 1 = ihour outside range 0-23
+        # 2 = imin outside range 0-59
+        # 3 = sec outside range 0-59.999...
+        #
+        # Called:
+        # sla_DTF2D
+        #
+        # Notes:
+        #
+        # 1)  The result is computed even if any of the range checks fail.
+        #
+        # 2)  The sign must be dealt with outside this routine.
+        #
+        # P.T.Wallace   Starlink   July 1984
+        #
+        # Copyright (C) 1995 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+
+        # Turns to radians
+
+        T2R = 6.283185307179586476925287e0
+
+        # Convert to turns then radians
+        days, j = cls.dtf2d(ihour, imin, sec, TURNS)
+        rad = T2R * TURNS
+
+        return rad, j
+
+    @classmethod
+    def bear(cls, a1, b1, a2, b2):
+        # +
+        # - - - - -
+        # B E A R
+        # - - - - -
+        #
+        # Bearing (position angle) of one point on a sphere relative to another
+        # (single precision)
+        #
+        # Given:
+        # a1,b1    r    spherical coordinates of one point
+        # a2,b2    r    spherical coordinates of the other point
+        #
+        # (The spherical coordinates are RA,Dec, Long,Lat etc, in radians.)
+        #
+        # The result is the bearing (position angle), in radians, of point
+        # a2,b2 as seen from point a1,B1.  It is in the range +/- pi.  If
+        # a2,b2 is due east of a1,b1 the bearing is +pi/2.  Zero is returned
+        # if the two points are coincident.
+        #
+        # P.T.Wallace   Starlink   23 March 1991
+        #
+        # Copyright (C) 1995 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+
+        DA = a2 - a1
+        Y = np.sin(DA) * np.cos(b2)
+        X = np.sin(b2) * np.cos(b1) - np.cos(b2) * np.sin(b1) * np.cos(DA)
+        return np.arctan2(Y, X) if X != 0.0 or Y != 0.0 else 0.0
+
+    @classmethod
+    def cr2tf(cls, ndp, angle):
+        # +
+        # - - - - - -
+        # C R 2 T F
+        # - - - - - -
+        #
+        # Convert an angle in radians into hours, minutes, seconds
+        # (single precision)
+        #
+        # Given:
+        # ndp       int      number of decimal places of seconds
+        # angle     real     angle in radians
+        #
+        # Returned:
+        # sign      char     '+' or '-'
+        # ihmsf     int(4)   hours, minutes, seconds, fraction
+        #
+        # Notes:
+        #
+        # 1)  ndp less than zero is interpreted as zero.
+        #
+        # 2)  The largest useful value for ndp is determined by the size of
+        # angle, the format of
+        # machine, and the risk of overflowing ihmsf(4).  On some
+        # architectures, for angle up to 2pi, the available floating-point
+        # precision corresponds roughly to ndp=3.  This is well below
+        # the ultimate limit of ndp=9 set by the capacity of a typical
+        # 32-bit ihmsf(4).
+        #
+        # 3)  The absolute value of angle may exceed 2pi.  In cases where it
+        # does not, it is up to the caller to test for and handle the
+        # case where angle is very nearly 2pi and rounds up to 24 hours,
+        # by testing for IHMSF[1] = 24 and setting ihmsf(1-4) to zero.
+        #
+        # Depends:  sla_CD2TF
+        #
+        # Last revision:   26 December 2004
+        #
+        # Copyright P.T.Wallace.  All rights reserved.
+        #
+        #
+        #
+        # -
+        # Turns to radians
+
+        T2R = 6.283185307179586476925287
+
+        # Scale then use days to h,m,s routine
+        sign, ihmsf = cls.cd2tf(ndp, angle / T2R, sign)
+
+        return sign, ihmsf
+
+    @classmethod
+    def dtps2c(cls, xi, eta, ra, dec):
+
+        # +
+        # - - - - - - -
+        # D T P S 2 C
+        # - - - - - - -
+        #
+        # From the tangent plane coordinates of a star of known ra,Dec,
+        # determine the ra,Dec of the tangent point.
+        #
+        # (double precision)
+        #
+        # Given:
+        # xi,eta      d    tangent plane rectangular coordinates
+        # ra,dec      d    spherical coordinates
+        #
+        # Returned:
+        # raz1,decz1  d    spherical coordinates of tangent point, solution 1
+        # raz2,decz2  d    spherical coordinates of tangent point, solution 2
+        # n           i    number of solutions:
+        # 0 = no solutions returned (note 2)
+        # 1 = only the first solution is useful (note 3)
+        # 2 = both solutions are useful (note 3)
+        #
+        # Notes:
+        #
+        # 1  The raz1 and raz2 values are returned in the range 0-2pi.
+        #
+        # 2  Cases where there is no solution can only arise near the poles.
+        # For example, it is clearly impossible for a star at the pole
+        # itself to have a non-zero xi value, and hence it is
+        # meaningless to ask where the tangent point would have to be
+        # to bring about this combination of xi and DEC.
+        #
+        # 3  Also near the poles, cases can arise where there are two useful
+        # solutions.  The argument n indicates whether the second of the
+        # two solutions returned is useful.  n=1 indicates only one useful
+        # solution, the usual case;  under these circumstances, the second
+        # solution corresponds to the "over-the-pole" case, and this is
+        # reflected in the values of raz2 and decz2 which are returned.
+        #
+        # 4  The decz1 and decz2 values are returned in the range +/-pi, but
+        # in the usual, non-pole-crossing, case, the range is +/-pi/2.
+        #
+        # 5  This routine is the spherical equivalent of the routine sla_DTPV2C.
+        #
+        # Depends:  sla_DRANRM
+        #
+        # P.T.Wallace   Starlink   5 June 1995
+        #
+        # Copyright (C) 1995 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+        raz1 = 0.0
+        decz1 = 0.0
+        raz2 = 0.0
+        decz2 = 0.0
+
+        X2 = xi * xi
+        Y2 = eta * eta
+        SD = np.sin(dec)
+        CD = np.cos(dec)
+        SDF = SD * np.sqrt(1e0 + X2 + Y2)
+        R2 = CD * CD * (1e0 + Y2) - SD * SD * X2
+        if R2 >= 0e0:
+            R = np.sqrt(R2)
+            S = SDF - eta * R
+            C = SDF * eta + R
+            R = 1e0 if (xi == 0e0 and R == 0e0) else R
+            raz1 = cls.dranrm(ra - np.arctan2(xi, R))
+            decz1 = np.arctan2(S, C)
+            R = -R
+            S = SDF - eta * R
+            C = SDF * eta + R
+            raz2 = cls.dranrm(ra - np.arctan2(xi, R))
+            decz2 = np.arctan2(S, C)
+            n = 1 if np.abs(SDF) < 1e0 else 2
+        else:
+            n = 0
+
+        return raz1, decz1, raz2, decz2, n
+
+    @classmethod
+    def ecor(cls, rm, dm, iy, id, fd):
+        # +
+        # - - - - -
+        # E C O R
+        # - - - - -
+        #
+        # Component of Earth orbit velocity and heliocentric
+        # light time in a given direction (single precision)
+        #
+        # Given:
+        # rm,dm    real    mean RA, Dec of date (radians)
+        # iy       int     year
+        # id       int     day in year (1 = Jan 1st)
+        # fd       real    fraction of day
+        #
+        # Returned:
+        # rv       real    component of Earth orbital velocity (km/sec)
+        # tl       real    component of heliocentric light time (sec)
+        #
+        # Notes:
+        #
+        # 1  The date and time is TDB (loosely ET) in a Julian calendar
+        # which has been aligned to the ordinary Gregorian
+        # calendar for the interval 1900 March 1 to 2100 February 28.
+        # The year and day can be obtained by calling sla_CALYD or
+        # sla_CLYD.
+        #
+        # 2  Sign convention:
+        #
+        # The velocity component is +ve when the Earth is receding from
+        # the given point on the sky.  The light time component is +ve
+        # when the Earth lies between the Sun and the given point on
+        # the sky.
+        #
+        # 3  Accuracy:
+        #
+        # The velocity component is usually within 0.004 km/s of the
+        # correct value and is never in error by more than 0.007 km/s.
+        # The error in light time correction is about 0.03s at worst,
+        # but is usually better than 0.01s. For applications requiring
+        # higher accuracy, see the sla_EVP and sla_EPV routines.
+        #
+        # Depends:  sla_EARTH, sla_CS2C, sla_VDV
+        #
+        # Last revision:   5 April 2005
+        #
+        # Copyright P.T.Wallace.  All rights reserved.
+        #
+        # License:
+        # This program is free software; you can redistribute it and/or modify
+        # it under the terms of the GNU General Public License as published by
+        # the Free Software Foundation; either version 2 of the License, or
+        # (at your option) any later version.
+        #
+        # This program is distributed in the hope that it will be useful,
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        # GNU General Public License for more details.
+        #
+        # You should have received a copy of the GNU General Public License
+        # along with this program (see SLA_CONDITIONS); if not, write to the
+        # Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+        # Boston, MA  02111-1307  USA
+        #
+        # -
+        # AU to km and light sec (1985 Almanac)
+        AUKM = 1.4959787066e8
+        AUSEC = 499.0047837
+
+        # Sun:Earth position & velocity vector
+        pv = cls.earth(iy, id, fd)
+
+        # Star position vector
+        v = cls.cs2c(rm, dm)
+
+        # Velocity component
+        rv = -AUKM * cls.vdv(pv[3], v)
+
+        # Light time component
+        tl = AUSEC * cls.vdv(pv[0], v)
+
+        return rv, tl
+
+    @classmethod
+    def earth(cls, iy, id, fd):
+        # +
+        # - - - - - -
+        # E A R T H
+        # - - - - - -
+        #
+        # Approximate heliocentric position and velocity of the Earth
+        #
+        # Given:
+        # iy       I       year
+        # id       I       day in year (1 = Jan 1st)
+        # fd       R       fraction of day
+        #
+        # Returned:
+        # pv       R(6)    Earth position & velocity vector
+        #
+        # Notes:
+        #
+        # 1  The date and time is TDB (loosely ET) in a Julian calendar
+        # which has been aligned to the ordinary Gregorian
+        # calendar for the interval 1900 March 1 to 2100 February 28.
+        # The year and day can be obtained by calling sla_CALYD or
+        # sla_CLYD.
+        #
+        # 2  The Earth heliocentric 6-vector is mean equator and equinox
+        # of date.  Position part, pv(1-3), is in AU;  velocity part,
+        # pv(4-6), is in AU/sec.
+        #
+        # 3  Max/RMS errors 1950-2050:
+        # 13/5 E-5 AU = 19200/7600 km in position
+        # 47/26 E-10 AU/s = 0.0070/0.0039 km/s in speed
+        #
+        # 4  More accurate results are obtainable with the routines sla_EVP
+        # and sla_EPV.
+        #
+        # Last revision:   5 April 2005
+        #
+        # Copyright P.T.Wallace.  All rights reserved.
+        #
+        # License:
+        # This program is free software; you can redistribute it and/or modify
+        # it under the terms of the GNU General Public License as published by
+        # the Free Software Foundation; either version 2 of the License, or
+        # (at your option) any later version.
+        #
+        # This program is distributed in the hope that it will be useful,
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        # GNU General Public License for more details.
+        #
+        # You should have received a copy of the GNU General Public License
+        # along with this program (see SLA_CONDITIONS); if not, write to the
+        # Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+        # Boston, MA  02111-1307  USA
+        #
+        # -
+        TWOPI = 6.28318530718
+
+        # Mean orbital speed of Earth, AU/s
+        SPEED = 1.9913e-7
+
+        # Mean Earth:EMB distance and speed, AU and AU/s
+        REMB = 3.12e-5
+        SEMB = 8.31e-11
+
+        # Whole years & fraction of year, and years since J1900.0
+        YI = float(iy - 1900)
+        IY4 = np.mod(np.mod(iy, 4) + 4, 4)
+        YF = (float(4 * (id - 1 / (IY4 + 1)) - IY4 - 2) + 4.0 * fd) / 1461.0
+        T = YI + YF
+
+        # Geometric mean longitude of Sun
+        # (cf 4.881627938+6.283319509911*T MOD 2PI)
+        ELM = np.mod(4.881628 + TWOPI * YF + 0.00013420 * T, TWOPI)
+
+        # Mean longitude of perihelion
+        GAMMA = 4.908230 + 3.0005e-4 * T
+
+        # Mean anomaly
+        EM = ELM - GAMMA
+
+        # Mean obliquity
+        EPS0 = 0.40931975 - 2.27e-6 * T
+
+        # Eccentricity
+        E = 0.016751 - 4.2e-7 * T
+        ESQ = E * E
+
+        # True anomaly
+        V = EM + 2.0 * E * np.sin(EM) + 1.25 * ESQ * np.sin(2.0 * EM)
+
+        # True ecliptic longitude
+        ELT = V + GAMMA
+
+        # True distance
+        R = (1.0 - ESQ) / (1.0 + E * np.cos(V))
+
+        # Moon's mean longitude
+        ELMM = np.mod(4.72 + 83.9971 * T, TWOPI)
+
+        # Useful functions
+        COSELT = np.cos(ELT)
+        SINEPS = np.sin(EPS0)
+        COSEPS = np.cos(EPS0)
+        W1 = -R * np.sin(ELT)
+        W2 = -SPEED * (COSELT + E * np.cos(GAMMA))
+        SELMM = np.sin(ELMM)
+        CELMM = np.cos(ELMM)
+
+        # Earth position and velocity
+        pv = [None for _ in range(6)]
+        pv[0] = -R * COSELT - REMB * CELMM
+        pv[1] = (W1 - REMB * SELMM) * COSEPS
+        pv[2] = W1 * SINEPS
+        pv[3] = SPEED * (np.sin(ELT) + E * np.sin(GAMMA)) + SEMB * SELMM
+        pv[4] = (W2 - SEMB * CELMM) * COSEPS
+        pv[5] = W2 * SINEPS
+
+        return pv
+
+    @classmethod
+    def epj2d(cls, epj):
+        # +
+        # - - - - - -
+        # E P J 2 D
+        # - - - - - -
+        #
+        # Conversion of Julian Epoch to Modified Julian Date (double precision)
+        #
+        # Given:
+        # epj      dp       Julian Epoch
+        #
+        # The result is the Modified Julian Date (JD - 2400000.5).
+        #
+        # Reference:
+        # Lieske,J.H., 1979. Astron.Astrophys.,73,282.
+        #
+        # P.T.Wallace   Starlink   February 1984
+        #
+        # Copyright (C) 1995 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+
+        return 51544.5e0 + (epj - 2000e0) * 365.25e0
+
+    @classmethod
+    def pcd(cls, disco, x, y):
+        # +
+        # - - - -
+        # P C D
+        # - - - -
+        #
+        # Apply pincushion/barrel distortion to a tangent-plane [x,y].
+        #
+        # Given:
+        # disco    d      pincushion/barrel distortion coefficient
+        # x,y      d      tangent-plane coordinates
+        #
+        # Returned:
+        # x,y      d      distorted coordinates
+        #
+        # Notes:
+        #
+        # 1)  The distortion is of the form RP = R*(1 + C*R**2), where R is
+        # the radial distance from the tangent point, C is the disco
+        # argument, and RP is the radial distance in the presence of
+        # the distortion.
+        #
+        # 2)  For pincushion distortion, C is +ve;  for barrel distortion,
+        # C is -ve.
+        #
+        # 3)  For x,y in units of one projection radius (in the case of
+        # a photographic plate, the focal length), the following
+        # disco values apply:
+        #
+        # Geometry          disco
+        #
+        # astrograph         0.0
+        # Schmidt           -0.3333
+        # AAT PF doublet  +147.069
+        # AAT PF triplet  +178.585
+        # AAT f/8          +21.20
+        # JKT f/8          +13.32
+        #
+        # 4)  There is a companion routine, sla_UNPCD, which performs the
+        # inverse operation.
+        #
+        # P.T.Wallace   Starlink   3 September 2000
+        #
+        # Copyright (C) 2000 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+
+        F = 1e0 + disco * (x * x + y * y)
+        x = x * F
+        y = y * F
+
+        return x, y
+
+    @classmethod
+    def refro(cls, zobs, hm, tdk, pmb, rh, wl, phi, tlr, eps):
+
+        # +
+        # - - - - - -
+        # R E F R O
+        # - - - - - -
+        #
+        # Atmospheric refraction for radio and optical/IR wavelengths.
+        #
+        # Given:
+        # zobs    d  observed zenith distance of the source (radian)
+        # hm      d  height of the observer above sea level (metre)
+        # tdk     d  ambient temperature at the observer (K)
+        # pmb     d  pressure at the observer (millibar)
+        # rh      d  relative humidity at the observer (range 0-1)
+        # wl      d  effective wavelength of the source (micrometre)
+        # phi     d  latitude of the observer (radian, astronomical)
+        # tlr     d  temperature lapse rate in the troposphere (K/metre)
+        # eps     d  precision required to terminate iteration (radian)
+        #
+        # Returned:
+        # ref     d  refraction: in vacuo ZD minus observed ZD (radian)
+        #
+        # Notes:
+        #
+        # 1  A suggested value for the tlr argument is 0.0065e0.  The
+        # refraction is significantly affected by tlr, and if studies
+        # of the local atmosphere have been carried out a better tlr
+        # value may be available.  The sign of the supplied tlr value
+        # is ignored.
+        #
+        # 2  A suggested value for the eps argument is 1e-8.  The result is
+        # usually at least two orders of magnitude more computationally
+        # precise than the supplied eps value.
+        #
+        # 3  The routine computes the refraction for zenith distances up
+        # to and a little beyond 90 deg using the method of Hohenkerk
+        # and Sinclair (NAO Technical Notes 59 and 63, subsequently adopted
+        # in the Explanatory Supplement, 1992 edition - see section 3.281).
+        #
+        # 4  The code is a development of the optical/IR refraction subroutine
+        # AREF of C.Hohenkerk (HMNAO, September 1984), with extensions to
+        # support the radio case.  Apart from merely cosmetic changes, the
+        # following modifications to the original HMNAO optical/IR refraction
+        # code have been made:
+        #
+        # .  The angle arguments have been changed to radians.
+        #
+        # .  Any value of zobs is allowed (see note 6, below).
+        #
+        # .  Other argument values have been limited to safe values.
+        #
+        # .  Murray's values for the gas constants have been used
+        # (Vectorial Astrometry, Adam Hilger, 1983).
+        #
+        # .  The numerical integration phase has been rearranged for
+        # extra clarity.
+        #
+        # .  A better model for Ps(T) has been adopted (taken from
+        # Gill, Atmosphere-Ocean Dynamics, Academic Press, 1982).
+        #
+        # .  More accurate expressions for Pwo have been adopted
+        # (again from Gill 1982).
+        #
+        # .  The formula for the water vapour pressure, given the
+        # saturation pressure and the relative humidity, is from
+        # Crane (1976), expression 2.5.5.
+        #
+        # .  Provision for radio wavelengths has been added using
+        # expressions devised by A.T.Sinclair, RGO (private
+        # communication 1989).  The refractivity model currently
+        # used is from J.M.Rueger, "Refractive Index Formulae for
+        # Electronic Distance Measurement with Radio and Millimetre
+        # Waves", in Unisurv Report S-68 (2002), School of Surveying
+        # and Spatial Information Systems, University of New South
+        # Wales, Sydney, Australia.
+        #
+        # .  The optical refractivity for dry air is from Resolution 3 of
+        # the International Association of Geodesy adopted at the XXIIth
+        # General Assembly in Birmingham, UK, 1999.
+        #
+        # .  Various small changes have been made to gain speed.
+        #
+        # 5  The radio refraction is chosen by specifying wl > 100 micrometres.
+        # Because the algorithm takes no account of the ionosphere, the
+        # accuracy deteriorates at low frequencies, below about 30 MHz.
+        #
+        # 6  Before use, the value of zobs is expressed in the range +/- pi.
+        # If this ranged zobs is -ve, the result ref is computed from its
+        # absolute value before being made -ve to match.  In addition, if
+        # it has an absolute value greater than 93 deg, a fixed ref value
+        # equal to the result for zobs = 93 deg is returned, appropriately
+        # signed.
+        #
+        # 7  As in the original Hohenkerk and Sinclair algorithm, fixed values
+        # of the water vapour polytrope exponent, the height of the
+        # tropopause, and the height at which refraction is negligible are
+        # used.
+        #
+        # 8  The radio refraction has been tested against work done by
+        # Iain Coulson, JACH, (private communication 1995) for the
+        # James Clerk Maxwell Telescope, Mauna Kea.  For typical conditions,
+        # agreement at the 0.1 arcsec level is achieved for moderate ZD,
+        # worsening to perhaps 0.5-1.0 arcsec at ZD 80 deg.  At hot and
+        # humid sea-level sites the accuracy will not be as good.
+        #
+        # 9  It should be noted that the relative humidity rh is formally
+        # defined in terms of "mixing ratio" rather than pressures or
+        # densities as is often stated.  It is the mass of water per unit
+        # mass of dry air divided by that for saturated air at the same
+        # temperature and pressure (see Gill 1982).
+        #
+        # 10 The algorithm is designed for observers in the troposphere.  The
+        # supplied temperature, pressure and lapse rate are assumed to be
+        # for a point in the troposphere and are used to define a model
+        # atmosphere with the tropopause at 11km altitude and a constant
+        # temperature above that.  However, in practice, the refraction
+        # values returned for stratospheric observers, at altitudes up to
+        # 25km, are quite usable.
+        #
+        # Depends:  sla_DRANGE, sla__ATMT, sla__ATMS
+        #
+        # Last revision:   5 December 2005
+        #
+        # Copyright P.T.Wallace.  All rights reserved.
+        #
+        #
+        #
+        # -
+
+        #
+        # Fixed parameters
+        #
+
+        # 93 degrees in radians
+        D93 = 1.623156204e0
+        # Universal gas constant
+        GCR = 8314.32e0
+        # Molecular weight of dry air
+        DMD = 28.9644e0
+        # Molecular weight of water vapour
+        DMW = 18.0152e0
+        # Mean Earth radius (metre)
+        S = 6378120e0
+        # Exponent of temperature dependence of water vapour pressure
+        DELTA = 18.36e0
+        # Height of tropopause (metre)
+        HT = 11000e0
+        # Upper limit for refractive effects (metre)
+        HS = 80000e0
+        # Numerical integration: maximum number of strips.
+        ISMAX = 16384
+        # The refraction integrand
+
+        REFI = lambda DN, RDNDR: RDNDR / (DN + RDNDR)
+
+        # Transform zobs into the normal range.
+        ZOBS1 = cls.drange(zobs)
+        ZOBS2 = np.minimum(np.abs(ZOBS1), D93)
+
+        # Keep other arguments within safe bounds.
+        HMOK = np.minimum(np.maximum(hm, -1e3), HS)
+        TDKOK = np.minimum(np.maximum(tdk, 100e0), 500e0)
+        PMBOK = np.minimum(np.maximum(pmb, 0e0), 10000e0)
+        RHOK = np.minimum(np.maximum(rh, 0e0), 1e0)
+        WLOK = np.maximum(wl, 0.1e0)
+        ALPHA = np.minimum(np.maximum(np.abs(tlr), 0.001e0), 0.01e0)
+
+        # Tolerance for iteration.
+        TOL = np.minimum(np.maximum(np.abs(eps), 1e-12), 0.1e0) / 2e0
+
+        # Decide whether optical/IR or radio case - switch at 100 microns.
+        OPTIC = WLOK <= 100e0
+
+        # Set up model atmosphere parameters defined at the observer.
+        WLSQ = WLOK * WLOK
+        GB = 9.784e0 * (1e0 - 0.0026e0 * np.cos(phi + phi) - 0.00000028e0 * HMOK)
+        if OPTIC:
+            A = (
+                (287.6155e0 + (1.62887e0 + 0.01360e0 / WLSQ) / WLSQ)
+                * 273.15e-6
+                / 1013.25e0
+            )
+        else:
+            A = 77.6890e-6
+
+        GAMAL = (GB * DMD) / GCR
+        GAMMA = GAMAL / ALPHA
+        GAMM2 = GAMMA - 2e0
+        DELM2 = DELTA - 2e0
+        TDC = TDKOK - 273.15e0
+        PSAT = 10e0 ** ((0.7859e0 + 0.03477e0 * TDC) / (1e0 + 0.00412e0 * TDC)) * (
+            1e0 + PMBOK * (4.5e-6 + 6e-10 * TDC * TDC)
+        )
+
+        if PMBOK > 0e0:
+            PWO = RHOK * PSAT / (1e0 - (1e0 - RHOK) * PSAT / PMBOK)
+        else:
+            PWO = 0e0
+
+        W = PWO * (1e0 - DMW / DMD) * GAMMA / (DELTA - GAMMA)
+        C1 = A * (PMBOK + W) / TDKOK
+        if OPTIC:
+            C2 = (A * W + 11.2684e-6 * PWO) / TDKOK
+        else:
+            C2 = (A * W + 6.3938e-6 * PWO) / TDKOK
+
+        C3 = (GAMMA - 1e0) * ALPHA * C1 / TDKOK
+        C4 = (DELTA - 1e0) * ALPHA * C2 / TDKOK
+        if OPTIC:
+            C5 = 0e0
+            C6 = 0e0
+        else:
+            C5 = 375463e-6 * PWO / TDKOK
+            C6 = C5 * DELM2 * ALPHA / (TDKOK * TDKOK)
+
+        # Conditions at the observer.
+        R0 = S + HMOK
+        TEMPO, DN0, RDNDR0 = cls._atmt(
+            R0, TDKOK, ALPHA, GAMM2, DELM2, C1, C2, C3, C4, C5, C6, R0
+        )
+
+        SK0 = DN0 * R0 * np.sin(ZOBS2)
+        F0 = REFI(DN0, RDNDR0)
+
+        # Conditions in the troposphere at the tropopause.
+        RT = S + np.maximum(HT, HMOK)
+        TT, DNT, RDNDRT = cls._atmt(
+            R0, TDKOK, ALPHA, GAMM2, DELM2, C1, C2, C3, C4, C5, C6, RT
+        )
+
+        SINE = SK0 / (RT * DNT)
+        ZT = np.arctan2(SINE, np.sqrt(np.maximum(1e0 - SINE * SINE, 0e0)))
+        FT = REFI(DNT, RDNDRT)
+
+        # Conditions in the stratosphere at the tropopause.
+        DNTS, RDNDRP = cls._atms(RT, TT, DNT, GAMAL, RT)
+        SINE = SK0 / (RT * DNTS)
+        ZTS = np.arctan2(SINE, np.sqrt(np.maximum(1e0 - SINE * SINE, 0e0)))
+        FTS = REFI(DNTS, RDNDRP)
+
+        # Conditions at the stratosphere limit.
+        RS = S + HS
+        DNS, RDNDRS = cls._atms(RT, TT, DNT, GAMAL, RS)
+        SINE = SK0 / (RS * DNS)
+        ZS = np.arctan2(SINE, np.sqrt(np.maximum(1e0 - SINE * SINE, 0e0)))
+        FS = REFI(DNS, RDNDRS)
+
+        # Variable initialization to avoid compiler warning.
+        REFT = 0e0
+
+        # Integrate the refraction integral in two parts;  first in the
+        # troposphere (K=1), then in the stratosphere (K=2).
+
+        for K in range(2):
+            # Initialize previous refraction to ensure at least two iterations.
+            REFOLD = 1e0
+            # Start off with 8 strips.
+            IS = 8
+            # Start Z, Z range, and start and end values.
+            if K == 0:
+                Z0 = ZOBS2
+                ZRANGE = ZT - Z0
+                FB = F0
+                FF = FT
+            else:
+                Z0 = ZTS
+                ZRANGE = ZS - Z0
+                FB = FTS
+                FF = FS
+
+            # Sums of odd and even values.
+            FO = 0e0
+            FE = 0e0
+
+            # First time through the loop we have to do every point.
+            N = 1
+
+            # Start of iteration loop (terminates at specified precision).
+            LOOP = True
+            while LOOP:
+
+                # Strip width.
+                H = ZRANGE / float(IS)
+
+                # Initialize distance from Earth centre for quadrature pass.
+                if K == 1:
+                    R = R0
+                else:
+                    R = RT
+
+                # One pass (no need to compute evens after first time).
+                for I in range(0, IS, N):
+
+                    # Sine of observed zenith distance.
+                    SZ = np.sin(Z0 + H * float(I))
+
+                    # Find R (to the nearest metre, maximum four iterations).
+                    if SZ > 1e-20:
+                        W = SK0 / SZ
+                        RG = R
+                        DR = 1e6
+                        J = 0
+                        while np.abs(DR) > 1e0 and J < 4:
+                            J = J + 1
+                            if K == 1:
+                                TG, DN, RDNDR = cls._atmt(
+                                    R0,
+                                    TDKOK,
+                                    ALPHA,
+                                    GAMM2,
+                                    DELM2,
+                                    C1,
+                                    C2,
+                                    C3,
+                                    C4,
+                                    C5,
+                                    C6,
+                                    RG,
+                                )
+
+                            else:
+                                DN, RDNDR = cls._atms(RT, TT, DNT, GAMAL, RG)
+
+                            DR = (RG * DN - W) / (DN + RDNDR)
+                            RG = RG - DR
+
+                        R = RG
+
+                    # Find the refractive index and integrand at R.
+                    if K == 1:
+                        T, DN, RDNDR = cls._atmt(
+                            R0, TDKOK, ALPHA, GAMM2, DELM2, C1, C2, C3, C4, C5, C6, R
+                        )
+                    else:
+                        DN, RDNDR = cls._atms(RT, TT, DNT, GAMAL, R)
+
+                    F = REFI(DN, RDNDR)
+
+                    # Accumulate odd and (first time only) even values.
+                    if N == 1 and np.mod(I, 2) == 0:
+                        FE = FE + F
+                    else:
+                        FO = FO + F
+
+                # Evaluate the integrand using Simpson's Rule.
+                REFP = H * (FB + 4e0 * FO + 2e0 * FE + FF) / 3e0
+
+                # Has the required precision been achieved (or can't be)?
+                if np.abs(REFP - REFOLD) > TOL and IS < ISMAX:
+
+                    # No: prepare for next iteration.
+
+                    # Save current value for convergence test.
+                    REFOLD = REFP
+
+                    # Double the number of strips.
+                    IS = IS + IS
+
+                    # Sum of all current values = sum of next pass's even values.
+                    FE = FE + FO
+
+                    # Prepare for new odd values.
+                    FO = 0e0
+
+                    # Skip even values next time.
+                    N = 2
+                else:
+
+                    # Yes: save troposphere component and terminate the loop.
+                    REFT = REFP if (K == 1) else REFT
+                    LOOP = False
+        # Result.
+        ref = REFT + REFP
+        ref = -ref if (ZOBS1 < 0e0) else ref
+
+        return ref
