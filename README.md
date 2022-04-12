@@ -14,7 +14,8 @@ the formatting. While this requires some hand's on work, the `convert.py` reduce
 ### Transpiling?
 Writing a full transpiler, would probably take 
 more work than using string substitution and manual re-writing, as fortran can do some crazy stuff; and while 
-it's easy for a human to see what the program is doing, having a program figure it out would be a huge endeavor. 
+it's easy for a human to see what the program is doing, having a program figure it out would be a much larger endeavor
+than I want to deal with. 
 It runs into the problem of [automating re-writing is slower than just re-writing it with string substitutions 
 for some common manipulations.](https://xkcd.com/1319/)
 
