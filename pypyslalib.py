@@ -5187,7 +5187,7 @@ class SLALib:
         T2R = 6.283185307179586476925287e0
 
         # Convert to turns then radians
-        days, j = cls.dtf2d(ihour, imin, sec, TURNS)
+        TURNS, j = cls.dtf2d(ihour, imin, sec)
         rad = T2R * TURNS
 
         return rad, j
@@ -5275,7 +5275,7 @@ class SLALib:
         T2R = 6.283185307179586476925287
 
         # Scale then use days to h,m,s routine
-        sign, ihmsf = cls.cd2tf(ndp, angle / T2R, sign)
+        sign, ihmsf = cls.cd2tf(ndp, angle / T2R)
 
         return sign, ihmsf
 
@@ -5365,7 +5365,7 @@ class SLALib:
         return raz1, decz1, raz2, decz2, n
 
     @classmethod
-    def ecor(cls, rm, dm, iy, id, fd):
+    def ecor(cls, rm, dm, iy, iid, fd):
         # +
         # - - - - -
         # E C O R
@@ -5435,7 +5435,7 @@ class SLALib:
         AUSEC = 499.0047837
 
         # Sun:Earth position & velocity vector
-        pv = cls.earth(iy, id, fd)
+        pv = cls.earth(iy, iid, fd)
 
         # Star position vector
         v = cls.cs2c(rm, dm)
