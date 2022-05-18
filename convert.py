@@ -252,11 +252,11 @@ line_replace = {
     "parameter": ParameterT(
         r"(DOUBLE PRECISION|INTEGER|REAL|PARAMETER) ?\(?(.+)\)?\s*$",
         r"\g<2>",
-        ("double_prec_bare", "int_bare", "real_bare", "type_redef"),
+        ("type_redef", "z"),
     ),
-    "double_prec_bare": Transformation(r"DOUBLE PRECISION ([\w,]+)\s*$", r""),
-    "int_bare": Transformation(r"INTEGER ([\w,]+)\s*$", r""),
-    "real_bare": Transformation(r"REAL ([\w,]+)\s*$", r""),
+    "double_prec_bare": Transformation(r"DOUBLE PRECISION ([^=]+)\s*$", r"", ("parameter", "z")),
+    "int_bare": Transformation(r"INTEGER ([^=]+)\s*$", r"", ("parameter", "z")),
+    "real_bare": Transformation(r"REAL ([^=]+)\s*$", r"", ("parameter", "z")),
     "data_def": Transformation(r"(DATA)", r""),
     "type_redef": LowerT(r"(INTEGER|REAL|FLOAT)\(", r"\g<1>("),
     "double_redef": Transformation("DBLE\(", "float("),
@@ -325,6 +325,24 @@ def clean_fn_arr(in_olines):
                 ll = ll.replace(x, n_x)
             in_olines[oln] = ll
 
+def clean_fn_args(in_olines):
+    global file_args
+    non_ascii = r"[ *+=\-\)\(\\/,_	]"
+    r_b = r"^"
+    r_e = r"$"
+    while file_args:
+        n_arg = file_args.pop().strip()
+        for oln, ll in in_olines.items():
+            for nu_arg in [n_arg, n_arg.lower(), n_arg.upper()]:
+                for search_str in [
+                    f"{non_ascii}{nu_arg}{non_ascii}",
+                    f"{r_b}{nu_arg}{non_ascii}",
+                    f"{non_ascii}{nu_arg}{r_e}",
+                ]:
+                    for x in re.findall(search_str, ll, re.M):
+                        n_x = x.replace(nu_arg, n_arg.lower())
+                        ll = ll.replace(x, n_x)
+            in_olines[oln] = ll
 
 def clean_file(in_fn_args, fn_returns, in_file_name, in_file_lines):
     global file_args
@@ -382,6 +400,7 @@ def clean_file(in_fn_args, fn_returns, in_file_name, in_file_lines):
         ind_set_extend(file_args, fn_returns)
 
     o_lines = dict(enumerate(o_lines))
+    clean_fn_args(o_lines)
     clean_fn_arr(o_lines)
 
     return list(o_lines.values())
