@@ -4653,7 +4653,7 @@ class SLALib:
         return v01, v02, n
 
     @classmethod
-    def ue2el(cls, u, jformr):
+    def ue2el(cls, u):
         # +
         # - - - - - -
         # u e 2 e L
@@ -4829,9 +4829,7 @@ class SLALib:
         PV[3:] = u[3:6] * CD2S
 
         # Convert the position and velocity etc into conventional elements.
-        jform, epoch, orbinc, anode, perih, aorq, e, aorl, dm, jstat = cls.pv2el(
-            PV, DATE, PMASS, jformr, jform
-        )
+        jform, epoch, orbinc, anode, perih, aorq, e, aorl, dm, jstat = cls.pv2el(PV, DATE, PMASS)
 
         return jform, epoch, orbinc, anode, perih, aorq, e, aorl, dm, jstat
 
@@ -6030,3 +6028,865 @@ class SLALib:
         ref = -ref if (ZOBS1 < 0e0) else ref
 
         return ref
+
+    @classmethod
+    def pa(cls, ha, dec, phi):
+        # +
+        # - - -
+        # P A
+        # - - -
+        #
+        # ha, Dec to Parallactic Angle (double precision)
+        #
+        # Given:
+        # ha     d     hour angle in radians (geocentric apparent)
+        # dec    d     declination in radians (geocentric apparent)
+        # phi    d     observatory latitude in radians (geodetic)
+        #
+        # The result is in the range -pi to +pi
+        #
+        # Notes:
+        #
+        # 1)  The parallactic angle at a point in the sky is the position
+        # angle of the vertical, i.e. the angle between the direction to
+        # the pole and to the zenith.  In precise applications care must
+        # be taken only to use geocentric apparent ha,Dec and to consider
+        # separately the effects of atmospheric refraction and telescope
+        # mount errors.
+        #
+        # 2)  At the pole a zero result is returned.
+        #
+        # P.T.Wallace   Starlink   16 August 1994
+        #
+        # Copyright (C) 1995 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+
+        CP = np.cos(phi)
+        SQSZ = CP * np.sin(ha)
+        CQSZ = np.sin(phi) * np.cos(dec) - CP * np.sin(dec) * np.cos(ha)
+        CQSZ = 1e0 if (SQSZ == 0e0 and CQSZ == 0e0) else CQSZ
+        return np.arctan2(SQSZ, CQSZ)
+
+    @classmethod
+    def daf2r(cls, ideg, iamin, asec):
+        # +
+        # - - - - - -
+        # D A F 2 R
+        # - - - - - -
+        #
+        # Convert degrees, arcminutes, arcseconds to radians
+        # (double precision)
+        #
+        # Given:
+        # ideg        int       degrees
+        # iamin       int       arcminutes
+        # asec        dp        arcseconds
+        #
+        # Returned:
+        # rad         dp        angle in radians
+        # j           int       status:  0 = OK
+        # 1 = ideg outside range 0-359
+        # 2 = iamin outside range 0-59
+        # 3 = asec outside range 0-59.999...
+        #
+        # Notes:
+        # 1)  The result is computed even if any of the range checks
+        # fail.
+        # 2)  The sign must be dealt with outside this routine.
+        #
+        # P.T.Wallace   Starlink   23 August 1996
+        #
+        # Copyright (C) 1996 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+
+        # Arc seconds to radians
+
+        AS2R = 0.484813681109535994e-5
+
+        # Preset status
+        j = 0
+
+        # Validate arcsec, arcmin, deg
+        j = 3 if (asec < 0e0 or asec >= 60e0) else j
+        j = 2 if (iamin < 0 or iamin > 59) else j
+        j = 1 if (ideg < 0 or ideg > 359) else j
+
+        # Compute angle
+        rad = AS2R * (60e0 * (60e0 * ideg + iamin) + asec)
+
+        return rad, j
+
+    @classmethod
+    def dmoon(cls, date):
+        # +
+        # - - - - - -
+        # D M O O N
+        # - - - - - -
+        #
+        # Approximate geocentric position and velocity of the Moon
+        # (double precision)
+        #
+        # Given:
+        # DATE       D       TDB (loosely ET) as a Modified Julian Date
+        # (JD-2400000.5)
+        #
+        # Returned:
+        # PV         D(6)    Moon x,y,z,xdot,ydot,zdot, mean equator and
+        # equinox of date (AU, AU/s)
+        #
+        # Notes:
+        #
+        # 1  This routine is a full implementation of the algorithm
+        # published by Meeus (see reference).
+        #
+        # 2  Meeus quotes accuracies of 10 arcsec in longitude, 3 arcsec in
+        # latitude and 0.2 arcsec in HP (equivalent to about 20 km in
+        # distance).  Comparison with JPL DE200 over the interval
+        # 1960-2025 gives RMS errors of 3.7 arcsec and 83 mas/hour in
+        # longitude, 2.3 arcsec and 48 mas/hour in latitude, 11 km
+        # and 81 mm/s in distance.  The maximum errors over the same
+        # interval are 18 arcsec and 0.50 arcsec/hour in longitude,
+        # 11 arcsec and 0.24 arcsec/hour in latitude, 40 km and 0.29 m/s
+        # in distance.
+        #
+        # 3  The original algorithm is expressed in terms of the obsolete
+        # timescale Ephemeris Time.  Either TDB or TT can be used, but
+        # not UT without incurring significant errors (30 arcsec at
+        # the present time) due to the Moon's 0.5 arcsec/sec movement.
+        #
+        # 4  The algorithm is based on pre IAU 1976 standards.  However,
+        # the result has been moved onto the new (FK5) equinox, an
+        # adjustment which is in any case much smaller than the
+        # intrinsic accuracy of the procedure.
+        #
+        # 5  Velocity is obtained by a complete analytical differentiation
+        # of the Meeus model.
+        #
+        # Reference:
+        # Meeus, l'Astronomie, June 1984, p348.
+        #
+        # P.T.Wallace   Starlink   22 January 1998
+        #
+        # Copyright (C) 1998 Rutherford Appleton Laboratory
+        #
+        # License:
+        # This program is free software; you can redistribute it and/or modify
+        # it under the terms of the GNU General Public License as published by
+        # the Free Software Foundation; either version 2 of the License, or
+        # (at your option) any later version.
+        #
+        # This program is distributed in the hope that it will be useful,
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        # GNU General Public License for more details.
+        #
+        # You should have received a copy of the GNU General Public License
+        # along with this program (see SLA_CONDITIONS); if not, write to the
+        # Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+        # Boston, MA  02111-1307  USA
+        #
+        # -
+
+        DATE = np.zeros(6)
+        PV = np.zeros(6)
+
+        # Degrees, arcseconds and seconds of time to radians
+        D2R = 0.0174532925199432957692369e0
+        DAS2R = 4.848136811095359935899141e-6
+        DS2R = 7.272205216643039903848712e-5
+
+        # Seconds per Julian century (86400*36525)
+        CJ = 3155760000e0
+
+        # Julian epoch of B1950
+        B1950 = 1949.9997904423e0
+
+        # Earth equatorial radius in AU ( = 6378.137 / 149597870 )
+        ERADAU = 4.2635212653763e-5
+
+        #
+        # Coefficients for fundamental arguments
+        #
+        # at J1900:  T**0, T**1, T**2, T**3
+        # at epoch:  T**0, T**1
+        #
+        # Units are degrees for position and Julian centuries for time
+        #
+
+        # Moon's mean longitude
+        ELP0 = 270.434164e0
+        ELP1 = 481267.8831e0
+        ELP2 = -0.001133e0
+        ELP3 = 0.0000019e0
+
+        # Sun's mean anomaly
+        EM0 = 358.475833e0
+        EM1 = 35999.0498e0
+        EM2 = -0.000150e0
+        EM3 = -0.0000033e0
+
+        # Moon's mean anomaly
+        EMP0 = 296.104608e0
+        EMP1 = 477198.8491e0
+        EMP2 = 0.009192e0
+        EMP3 = 0.0000144e0
+
+        # Moon's mean elongation
+        D0 = 350.737486e0
+        D1 = 445267.1142e0
+        D2 = -0.001436e0
+        D3 = 0.0000019e0
+
+        # Mean distance of the Moon from its ascending node
+        F0 = 11.250889e0
+        F1 = 483202.0251e0
+        F2 = -0.003211e0
+        F3 = -0.0000003e0
+
+        # Longitude of the Moon's ascending node
+        OM0 = 259.183275e0
+        OM1 = -1934.1420e0
+        OM2 = 0.002078e0
+        OM3 = 0.0000022e0
+
+        # Coefficients for (dimensionless) E factor
+        E1 = -0.002495e0
+        E2 = -0.00000752e0
+
+        # Coefficients for periodic variations etc
+        PAC = 0.000233e0
+        PA0 = 51.2e0
+        PA1 = 20.2e0
+        PBC = -0.001778e0
+        PCC = 0.000817e0
+        PDC = 0.002011e0
+        PEC = 0.003964e0
+        PE0 = 346.560e0
+        PE1 = 132.870e0
+        PE2 = -0.0091731e0
+
+        PFC = 0.001964e0
+        PGC = 0.002541e0
+        PHC = 0.001964e0
+        PIC = -0.024691e0
+        PJC = -0.004328e0
+        PJ0 = 275.05e0
+        PJ1 = -2.30e0
+        CW1 = 0.0004664e0
+        CW2 = 0.0000754e0
+
+        #
+        # Coefficients for Moon position
+        #
+        # Tx(N)       = coefficient of L, B or P term (deg)
+        # ITx(N,1-5)  = coefficients of M, M', D, F, E**n in argument
+        #
+        NL = 50
+        NB = 45
+        NP = 31
+
+        TL = np.zeros(NL)
+        TB = np.zeros(NB)
+        TP = np.zeros(NP)
+
+        ITL = np.zeros((5, NL))
+        ITB = np.zeros((5, NB))
+        ITP = np.zeros((5, NP))
+        #
+        # Longitude
+        # M   M'  D   F   n
+        TL[1] = 6.288750e0
+        ITL[1] = [0, 1, 0, 0, 0]
+
+        TL[2] = 1.274018e0
+        ITL[2] = [0, -1, 2, 0, 0]
+
+        TL[3] = 0.658309e0
+        ITL[3] = [0, 0, 2, 0, 0]
+
+        TL[4] = 0.213616e0
+        ITL[4] = [0, 2, 0, 0, 0]
+
+        TL[5] = -0.185596e0
+        ITL[5] = [1, 0, 0, 0, 1]
+
+        TL[6] = -0.114336e0
+        ITL[6] = [0, 0, 0, 2, 0]
+
+        TL[7] = 0.058793e0
+        ITL[7] = [0, -2, 2, 0, 0]
+
+        TL[8] = 0.057212e0
+        ITL[8] = [-1, -1, 2, 0, 1]
+
+        TL[9] = 0.053320e0
+        ITL[9] = [0, 1, 2, 0, 0]
+
+        TL[10] = 0.045874e0
+        ITL[10] = [-1, 0, 2, 0, 1]
+
+        TL[11] = 0.041024e0
+        ITL[11] = [-1, 1, 0, 0, 1]
+
+        TL[12] = -0.034718e0
+        ITL[12] = [0, 0, 1, 0, 0]
+
+        TL[13] = -0.030465e0
+        ITL[13] = [1, 1, 0, 0, 1]
+
+        TL[14] = 0.015326e0
+        ITL[14] = [0, 0, 2, -2, 0]
+
+        TL[15] = -0.012528e0
+        ITL[15] = [0, 1, 0, 2, 0]
+
+        TL[16] = -0.010980e0
+        ITL[16] = [0, -1, 0, 2, 0]
+
+        TL[17] = 0.010674e0
+        ITL[17] = [0, -1, 4, 0, 0]
+
+        TL[18] = 0.010034e0
+        ITL[18] = [0, 3, 0, 0, 0]
+
+        TL[19] = 0.008548e0
+        ITL[19] = [0, -2, 4, 0, 0]
+
+        TL[20] = -0.007910e0
+        ITL[20] = [1, -1, 2, 0, 1]
+
+        TL[21] = -0.006783e0
+        ITL[21] = [1, 0, 2, 0, 1]
+
+        TL[22] = 0.005162e0
+        ITL[22] = [0, 1, -1, 0, 0]
+
+        TL[23] = 0.005000e0
+        ITL[23] = [1, 0, 1, 0, 1]
+
+        TL[24] = 0.004049e0
+        ITL[24] = [-1, 1, 2, 0, 1]
+
+        TL[25] = 0.003996e0
+        ITL[25] = [0, 2, 2, 0, 0]
+
+        TL[26] = 0.003862e0
+        ITL[26] = [0, 0, 4, 0, 0]
+
+        TL[27] = 0.003665e0
+        ITL[27] = [0, -3, 2, 0, 0]
+
+        TL[28] = 0.002695e0
+        ITL[28] = [-1, 2, 0, 0, 1]
+
+        TL[29] = 0.002602e0
+        ITL[29] = [0, 1, -2, -2, 0]
+
+        TL[30] = 0.002396e0
+        ITL[30] = [-1, -2, 2, 0, 1]
+
+        TL[31] = -0.002349e0
+        ITL[31] = [0, 1, 1, 0, 0]
+
+        TL[32] = 0.002249e0
+        ITL[32] = [-2, 0, 2, 0, 2]
+
+        TL[33] = -0.002125e0
+        ITL[33] = [1, 2, 0, 0, 1]
+
+        TL[34] = -0.002079e0
+        ITL[34] = [2, 0, 0, 0, 2]
+
+        TL[35] = 0.002059e0
+        ITL[35] = [-2, -1, 2, 0, 2]
+
+        TL[36] = -0.001773e0
+        ITL[36] = [0, 1, 2, -2, 0]
+
+        TL[37] = -0.001595e0
+        ITL[37] = [0, 0, 2, 2, 0]
+
+        TL[38] = 0.001220e0
+        ITL[38] = [-1, -1, 4, 0, 1]
+
+        TL[39] = -0.001110e0
+        ITL[39] = [0, 2, 0, 2, 0]
+
+        TL[40] = 0.000892e0
+        ITL[40] = [0, 1, -3, 0, 0]
+
+        TL[41] = -0.000811e0
+        ITL[41] = [1, 1, 2, 0, 1]
+
+        TL[42] = 0.000761e0
+        ITL[42] = [-1, -2, 4, 0, 1]
+
+        TL[43] = 0.000717e0
+        ITL[43] = [-2, 1, 0, 0, 2]
+
+        TL[44] = 0.000704e0
+        ITL[44] = [-2, 1, -2, 0, 2]
+
+        TL[45] = 0.000693e0
+        ITL[45] = [1, -2, 2, 0, 1]
+
+        TL[46] = 0.000598e0
+        ITL[46] = [-1, 0, 2, -2, 1]
+
+        TL[47] = 0.000550e0
+        ITL[47] = [0, 1, 4, 0, 0]
+
+        TL[48] = 0.000538e0
+        ITL[48] = [0, 4, 0, 0, 0]
+
+        TL[49] = 0.000521e0
+        ITL[49] = [-1, 0, 4, 0, 1]
+
+        TL[50] = 0.000486e0
+        ITL[50] = [0, 2, -1, 0, 0]
+
+        #
+        # Latitude
+        # M   M'  D   F   n
+        TB[1] = 5.128189e0
+        ITB[1] = [0, 0, 0, 1, 0]
+
+        TB[2] = 0.280606e0
+        ITB[2] = [0, 1, 0, 1, 0]
+
+        TB[3] = 0.277693e0
+        ITB[3] = [0, 1, 0, -1, 0]
+
+        TB[4] = 0.173238e0
+        ITB[4] = [0, 0, 2, -1, 0]
+
+        TB[5] = 0.055413e0
+        ITB[5] = [0, -1, 2, 1, 0]
+
+        TB[6] = 0.046272e0
+        ITB[6] = [0, -1, 2, -1, 0]
+
+        TB[7] = 0.032573e0
+        ITB[7] = [0, 0, 2, 1, 0]
+
+        TB[8] = 0.017198e0
+        ITB[8] = [0, 2, 0, 1, 0]
+
+        TB[9] = 0.009267e0
+        ITB[9] = [0, 1, 2, -1, 0]
+
+        TB[10] = 0.008823e0
+        ITB[10] = [0, 2, 0, -1, 0]
+
+        TB[11] = 0.008247e0
+        ITB[11] = [-1, 0, 2, -1, 1]
+
+        TB[12] = 0.004323e0
+        ITB[12] = [0, -2, 2, -1, 0]
+
+        TB[13] = 0.004200e0
+        ITB[13] = [0, 1, 2, 1, 0]
+
+        TB[14] = 0.003372e0
+        ITB[14] = [-1, 0, -2, 1, 1]
+
+        TB[15] = 0.002472e0
+        ITB[15] = [-1, -1, 2, 1, 1]
+
+        TB[16] = 0.002222e0
+        ITB[16] = [-1, 0, 2, 1, 1]
+
+        TB[17] = 0.002072e0
+        ITB[17] = [-1, -1, 2, -1, 1]
+
+        TB[18] = 0.001877e0
+        ITB[18] = [-1, 1, 0, 1, 1]
+
+        TB[19] = 0.001828e0
+        ITB[19] = [0, -1, 4, -1, 0]
+
+        TB[20] = -0.001803e0
+        ITB[20] = [1, 0, 0, 1, 1]
+
+        TB[21] = -0.001750e0
+        ITB[21] = [0, 0, 0, 3, 0]
+
+        TB[22] = 0.001570e0
+        ITB[22] = [-1, 1, 0, -1, 1]
+
+        TB[23] = -0.001487e0
+        ITB[23] = [0, 0, 1, 1, 0]
+
+        TB[24] = -0.001481e0
+        ITB[24] = [1, 1, 0, 1, 1]
+
+        TB[25] = 0.001417e0
+        ITB[25] = [-1, -1, 0, 1, 1]
+
+        TB[26] = 0.001350e0
+        ITB[26] = [-1, 0, 0, 1, 1]
+
+        TB[27] = 0.001330e0
+        ITB[27] = [0, 0, -1, 1, 0]
+
+        TB[28] = 0.001106e0
+        ITB[28] = [0, 3, 0, 1, 0]
+
+        TB[29] = 0.001020e0
+        ITB[29] = [0, 0, 4, -1, 0]
+
+        TB[30] = 0.000833e0
+        ITB[30] = [0, -1, 4, 1, 0]
+
+        TB[31] = 0.000781e0
+        ITB[31] = [0, 1, 0, -3, 0]
+
+        TB[32] = 0.000670e0
+        ITB[32] = [0, -2, 4, 1, 0]
+
+        TB[33] = 0.000606e0
+        ITB[33] = [0, 0, 2, -3, 0]
+
+        TB[34] = 0.000597e0
+        ITB[34] = [0, 2, 2, -1, 0]
+
+        TB[35] = 0.000492e0
+        ITB[35] = [-1, 1, 2, -1, 1]
+
+        TB[36] = 0.000450e0
+        ITB[36] = [0, 2, -2, -1, 0]
+
+        TB[37] = 0.000439e0
+        ITB[37] = [0, 3, 0, -1, 0]
+
+        TB[38] = 0.000423e0
+        ITB[38] = [0, 2, 2, 1, 0]
+
+        TB[39] = 0.000422e0
+        ITB[39] = [0, -3, 2, -1, 0]
+
+        TB[40] = -0.000367e0
+        ITB[40] = [1, -1, 2, 1, 1]
+
+        TB[41] = -0.000353e0
+        ITB[41] = [1, 0, 2, 1, 1]
+
+        TB[42] = 0.000331e0
+        ITB[42] = [0, 0, 4, 1, 0]
+
+        TB[43] = 0.000317e0
+        ITB[43] = [-1, 1, 2, 1, 1]
+
+        TB[44] = 0.000306e0
+        ITB[44] = [-2, 0, 2, -1, 2]
+
+        TB[45] = -0.000283e0
+        ITB[45] = [0, 1, 0, 3, 0]
+
+        #
+        # Parallax
+        # M   M'  D   F   n
+        TP[1] = 0.950724e0
+        ITP[1] = [0, 0, 0, 0, 0]
+
+        TP[2] = 0.051818e0
+        ITP[2] = [0, 1, 0, 0, 0]
+
+        TP[3] = 0.009531e0
+        ITP[3] = [0, -1, 2, 0, 0]
+
+        TP[4] = 0.007843e0
+        ITP[4] = [0, 0, 2, 0, 0]
+
+        TP[5] = 0.002824e0
+        ITP[5] = [0, 2, 0, 0, 0]
+
+        TP[6] = 0.000857e0
+        ITP[6] = [0, 1, 2, 0, 0]
+
+        TP[7] = 0.000533e0
+        ITP[7] = [-1, 0, 2, 0, 1]
+
+        TP[8] = 0.000401e0
+        ITP[8] = [-1, -1, 2, 0, 1]
+
+        TP[9] = 0.000320e0
+        ITP[9] = [-1, 1, 0, 0, 1]
+
+        TP[10] = -0.000271e0
+        ITP[10] = [0, 0, 1, 0, 0]
+
+        TP[11] = -0.000264e0
+        ITP[11] = [1, 1, 0, 0, 1]
+
+        TP[12] = -0.000198e0
+        ITP[12] = [0, -1, 0, 2, 0]
+
+        TP[13] = 0.000173e0
+        ITP[13] = [0, 3, 0, 0, 0]
+
+        TP[14] = 0.000167e0
+        ITP[14] = [0, -1, 4, 0, 0]
+
+        TP[15] = -0.000111e0
+        ITP[15] = [1, 0, 0, 0, 1]
+
+        TP[16] = 0.000103e0
+        ITP[16] = [0, -2, 4, 0, 0]
+
+        TP[17] = -0.000084e0
+        ITP[17] = [0, 2, -2, 0, 0]
+
+        TP[18] = -0.000083e0
+        ITP[18] = [1, 0, 2, 0, 1]
+
+        TP[19] = 0.000079e0
+        ITP[19] = [0, 2, 2, 0, 0]
+
+        TP[20] = 0.000072e0
+        ITP[20] = [0, 0, 4, 0, 0]
+
+        TP[21] = 0.000064e0
+        ITP[21] = [-1, 1, 2, 0, 1]
+
+        TP[22] = -0.000063e0
+        ITP[22] = [1, -1, 2, 0, 1]
+
+        TP[23] = 0.000041e0
+        ITP[23] = [1, 0, 1, 0, 1]
+
+        TP[24] = 0.000035e0
+        ITP[24] = [-1, 2, 0, 0, 1]
+
+        TP[25] = -0.000033e0
+        ITP[25] = [0, 3, -2, 0, 0]
+
+        TP[26] = -0.000030e0
+        ITP[26] = [0, 1, 1, 0, 0]
+
+        TP[27] = -0.000029e0
+        ITP[27] = [0, 0, -2, 2, 0]
+
+        TP[28] = -0.000029e0
+        ITP[28] = [1, 2, 0, 0, 1]
+
+        TP[29] = 0.000026e0
+        ITP[29] = [-2, 0, 2, 0, 2]
+
+        TP[30] = -0.000023e0
+        ITP[30] = [0, 1, -2, 2, 0]
+
+        TP[31] = 0.000019e0
+        ITP[31] = [-1, -1, 4, 0, 1]
+
+        # Centuries since J1900
+        T = (DATE - 15019.5e0) / 36525e0
+
+        #
+        # Fundamental arguments (radians) and derivatives (radians per
+        # Julian century) for the current epoch
+        #
+
+        # Moon's mean longitude
+        ELP = D2R * np.mod(ELP0 + (ELP1 + (ELP2 + ELP3 * T) * T) * T, 360e0)
+        DELP = D2R * (ELP1 + (2e0 * ELP2 + 3e0 * ELP3 * T) * T)
+
+        # Sun's mean anomaly
+        EM = D2R * np.mod(EM0 + (EM1 + (EM2 + EM3 * T) * T) * T, 360e0)
+        DEM = D2R * (EM1 + (2e0 * EM2 + 3e0 * EM3 * T) * T)
+
+        # Moon's mean anomaly
+        EMP = D2R * np.mod(EMP0 + (EMP1 + (EMP2 + EMP3 * T) * T) * T, 360e0)
+        DEMP = D2R * (EMP1 + (2e0 * EMP2 + 3e0 * EMP3 * T) * T)
+
+        # Moon's mean elongation
+        D = D2R * np.mod(D0 + (D1 + (D2 + D3 * T) * T) * T, 360e0)
+        DD = D2R * (D1 + (2e0 * D2 + 3e0 * D3 * T) * T)
+
+        # Mean distance of the Moon from its ascending node
+        F = D2R * np.mod(F0 + (F1 + (F2 + F3 * T) * T) * T, 360e0)
+        DF = D2R * (F1 + (2e0 * F2 + 3e0 * F3 * T) * T)
+
+        # Longitude of the Moon's ascending node
+        OM = D2R * np.mod(OM0 + (OM1 + (OM2 + OM3 * T) * T) * T, 360e0)
+        DOM = D2R * (OM1 + (2e0 * OM2 + 3e0 * OM3 * T) * T)
+        SINOM = np.sin(OM)
+        COSOM = np.cos(OM)
+        DOMCOM = DOM * COSOM
+
+        # Add the periodic variations
+        THETA = D2R * (PA0 + PA1 * T)
+        WA = np.sin(THETA)
+        DWA = D2R * PA1 * np.cos(THETA)
+        THETA = D2R * (PE0 + (PE1 + PE2 * T) * T)
+        WB = PEC * np.sin(THETA)
+        DWB = D2R * PEC * (PE1 + 2e0 * PE2 * T) * np.cos(THETA)
+        ELP = ELP + D2R * (PAC * WA + WB + PFC * SINOM)
+        DELP = DELP + D2R * (PAC * DWA + DWB + PFC * DOMCOM)
+        EM = EM + D2R * PBC * WA
+        DEM = DEM + D2R * PBC * DWA
+        EMP = EMP + D2R * (PCC * WA + WB + PGC * SINOM)
+        DEMP = DEMP + D2R * (PCC * DWA + DWB + PGC * DOMCOM)
+        D = D + D2R * (PDC * WA + WB + PHC * SINOM)
+        DD = DD + D2R * (PDC * DWA + DWB + PHC * DOMCOM)
+        WOM = OM + D2R * (PJ0 + PJ1 * T)
+        DWOM = DOM + D2R * PJ1
+        SINWOM = np.sin(WOM)
+        COSWOM = np.cos(WOM)
+        F = F + D2R * (WB + PIC * SINOM + PJC * SINWOM)
+        DF = DF + D2R * (DWB + PIC * DOMCOM + PJC * DWOM * COSWOM)
+
+        # E-factor, and square
+        E = 1e0 + (E1 + E2 * T) * T
+        DE = E1 + 2e0 * E2 * T
+        ESQ = E * E
+        DESQ = 2e0 * E * DE
+
+        #
+        # Series expansions
+        #
+
+        # Longitude
+        V = 0e0
+        DV = 0e0
+        for N in range(NL, 1, -1):
+            COEFF = TL[N]
+            EMN = ITL[1][N]
+            EMPN = ITL[2][N]
+            DN = ITL[3][N]
+            FN = ITL[4][N]
+            I = ITL[5][N]
+            if I == 0:
+                EN = 1e0
+                DEN = 0e0
+            elif I == 1:
+                EN = E
+                DEN = DE
+            else:
+                EN = ESQ
+                DEN = DESQ
+
+            THETA = EMN * EM + EMPN * EMP + DN * D + FN * F
+            DTHETA = EMN * DEM + EMPN * DEMP + DN * DD + FN * DF
+            FTHETA = np.sin(THETA)
+            V = V + COEFF * FTHETA * EN
+            DV = DV + COEFF * (np.cos(THETA) * DTHETA * EN + FTHETA * DEN)
+
+        EL = ELP + D2R * V
+        DEL = (DELP + D2R * DV) / CJ
+
+        # Latitude
+        V = 0e0
+        DV = 0e0
+        for N in range(NB, 1, -1):
+            COEFF = TB[N]
+            EMN = ITB[1][N]
+            EMPN = ITB[2][N]
+            DN = ITB[3][N]
+            FN = ITB[4][N]
+            I = ITB[5][N]
+            if I == 0:
+                EN = 1e0
+                DEN = 0e0
+            elif I == 1:
+                EN = E
+                DEN = DE
+            else:
+                EN = ESQ
+                DEN = DESQ
+
+            THETA = EMN * EM + EMPN * EMP + DN * D + FN * F
+            DTHETA = EMN * DEM + EMPN * DEMP + DN * DD + FN * DF
+            FTHETA = np.sin(THETA)
+            V = V + COEFF * FTHETA * EN
+            DV = DV + COEFF * (np.cos(THETA) * DTHETA * EN + FTHETA * DEN)
+
+        BF = 1e0 - CW1 * COSOM - CW2 * COSWOM
+        DBF = CW1 * DOM * SINOM + CW2 * DWOM * SINWOM
+        B = D2R * V * BF
+        DB = D2R * (DV * BF + V * DBF) / CJ
+
+        # Parallax
+        V = 0e0
+        DV = 0e0
+        for N in range(NP, 1, -1):
+            COEFF = TP[N]
+            EMN = ITP[1][N]
+            EMPN = ITP[2][N]
+            DN = ITP[3][N]
+            FN = ITP[4][N]
+            I = ITP[5][N]
+            if I == 0:
+                EN = 1e0
+                DEN = 0e0
+            elif I == 1:
+                EN = E
+                DEN = DE
+            else:
+                EN = ESQ
+                DEN = DESQ
+
+            THETA = EMN * EM + EMPN * EMP + DN * D + FN * F
+            DTHETA = EMN * DEM + EMPN * DEMP + DN * DD + FN * DF
+            FTHETA = np.cos(THETA)
+            V = V + COEFF * FTHETA * EN
+            DV = DV + COEFF * (-np.sin(THETA) * DTHETA * EN + FTHETA * DEN)
+
+        P = D2R * V
+        DP = D2R * DV / CJ
+
+        #
+        # Transformation into final form
+        #
+
+        # Parallax to distance (AU, AU/sec)
+        SP = np.sin(P)
+        R = ERADAU / SP
+        DR = -R * DP * np.cos(P) / SP
+
+        # Longitude, latitude to x,y,z (AU)
+        SEL = np.sin(EL)
+        CEL = np.cos(EL)
+        SB = np.sin(B)
+        CB = np.cos(B)
+        RCB = R * CB
+        RBD = R * DB
+        W = RBD * SB - CB * DR
+        X = RCB * CEL
+        Y = RCB * SEL
+        Z = R * SB
+        XD = -Y * DEL - W * CEL
+        YD = X * DEL - W * SEL
+        ZD = RBD * CB + SB * DR
+
+        # Julian centuries since J2000
+        T = (DATE - 51544.5e0) / 36525e0
+
+        # Fricke equinox correction
+        EPJ = 2000e0 + T * 100e0
+        EQCOR = DS2R * (0.035e0 + 0.00085e0 * (EPJ - B1950))
+
+        # Mean obliquity (IAU 1976)
+        EPS = DAS2R * (
+            84381.448e0 + (-46.8150e0 + (-0.00059e0 + 0.001813e0 * T) * T) * T
+        )
+
+        # To the equatorial system, mean of date, FK5 system
+        SINEPS = np.sin(EPS)
+        COSEPS = np.cos(EPS)
+        ES = EQCOR * SINEPS
+        EC = EQCOR * COSEPS
+        PV[1] = X - EC * Y + ES * Z
+        PV[2] = EQCOR * X + Y * COSEPS - Z * SINEPS
+        PV[3] = Y * SINEPS + Z * COSEPS
+        PV[4] = XD - EC * YD + ES * ZD
+        PV[5] = EQCOR * XD + YD * COSEPS - ZD * SINEPS
+        PV[6] = YD * SINEPS + ZD * COSEPS
+
+        return PV
