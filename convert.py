@@ -28,10 +28,10 @@ class Transformation:
         self.f_t = f_test
         self.py_r = py_replace
         self.priority_of = priority_of
-    
+
     def __repr__(self):
         return f"<{type(self)}: ({self.f_t}, {self.py_r})>"
-    
+
     def test(self, in_string):
         global c_debug
         in_string = in_string.strip()
@@ -39,7 +39,7 @@ class Transformation:
         if i_t and c_debug:
             print(self.f_t, " : ", in_string)
         return i_t
-    
+
     def replace(self, in_string):
         return re.sub(self.f_t, self.py_r, in_string)
 
@@ -49,15 +49,15 @@ class TemplateTransformation:
         self.f_t = Template(f_test)
         self.py_r = Template(py_replace)
         self.sub_dict = {}
-    
+
     def __setitem__(self, key, value):
         self.sub_dict[key] = value
-    
+
     def test(self, in_string):
         in_string = in_string.strip()
         f_sub = self.f_t.substitute(**self.sub_dict)
         return re.search(f_sub, in_string) is not None if in_string else False
-    
+
     def replace(self, in_string):
         f_sub = self.f_t.substitute(**self.sub_dict)
         r_sub = self.py_r.substitute(**self.sub_dict)
@@ -85,7 +85,7 @@ class FuncDefT(Transformation):
         match = re.search(r"sla_(\w+)\((.+)\)", rv)
         fn_args = [x.strip() for x in match[2].split(",")]
         ind_set_extend(file_args, fn_args)
-        
+
         call_fn = match[1].lower()
         call_info = pyf_info[call_fn]
         ind_set_extend(file_args, call_info["in"])
@@ -110,12 +110,12 @@ class FortranCallT(Transformation):
         call_info = pyf_info[call_fn]
         call_in = call_info["in"]
         call_out = call_info["out"]
-        
+
         call_fn_args = ",".join(
             [x.strip() for x in match[2].split(",")[: (len(call_in) + 1)]]
         )
         rv = f"{','.join(call_out)} = cls.{call_fn}({call_fn_args})"
-        
+
         new_dep = call_fn
         if new_dep not in converted:
             print("Adding Dependency ", new_dep)
@@ -127,7 +127,7 @@ class FuncCallT(Transformation):
     def replace(self, in_string):
         rv = super().replace(in_string)
         match = re.search(r"cls\.(\w+)\(", rv)
-        
+
         call_fn = match[1].lower()
         rv = re.sub(
             r"cls\.(\w+)\(",
@@ -149,7 +149,7 @@ class ArrDefT(Transformation):
 class ArrGetSetT(Transformation):
     def replace(self, in_string):
         rv = super().replace(in_string)
-        if matches := re.findall(r"(\w+\s*)\[([\-\s\d]+)\]", rv):
+        if matches := re.findall(r"(\w+\s*)\[([\-\s\d]+)]", rv):
             for match in matches:
                 arr_name = match[0].strip()
                 arr_ind = int(match[1])
@@ -157,10 +157,10 @@ class ArrGetSetT(Transformation):
                 known_arrs.add(arr_name)
         if "=" in rv:
             v_assign, v_value = rv.split("=", 1)
-            v_value = v_value.replace("+", "").strip()
+            v_value = re.sub(r"([ ,\b])\+(\d)", r"\g<1>\g<2>", v_value.strip())
             if "=" in v_value:
-                v_value = re.sub(r",(?=\s+\w+\[[\-\s\d]+\]\s+=)", "; ", v_value)
-                
+                v_value = re.sub(r",(?=\s+\w+\[[\-\s\d]+]\s+=)", "; ", v_value)
+
                 t_l, n_l = v_value.split(";", 1)
                 t_l = t_l.strip()
                 v_value = f"{t_l};{n_l}"
@@ -206,7 +206,9 @@ line_replace = {
     "dependencies": DependT(r"^\s*\*+\s*Called:(.+)", r"# Depends:\g<1>"),
     "comment": Transformation(r"^\*+\s*(.*)", r"# \g<1>"),
     "call": FortranCallT(r"CALL (\w+) ?\((.+)\)", r"cls.\g<1>(\g<2>)"),
-    "do": Transformation(r"DO ([ \w]+)=([ \w\-]+),([ \w,\-]+)", r"for \g<1> in range(\g<2>, \g<3>):"),
+    "do": Transformation(
+        r"DO ([ \w]+)=([ \w\-]+),([ \w,\-]+)", r"for \g<1> in range(\g<2>, \g<3>):"
+    ),
     "while": Transformation(r"DO WHILE ?(.+)", r"while \g<1>:"),
     "end": Transformation(r"END ?(DO|IF)?", r""),
     "elif": Transformation(r"ELSE IF(.+)(?:THEN)", r"elif \g<1>:", ("if", "else")),
@@ -243,12 +245,14 @@ line_replace = {
         r" \g<1>[\g<2>] = \g<3>",
     ),
     "arr_set": ArrGetSetT(r"(\w+) ?\(([\-\s\d]+)\) ?= ?", r"\g<1>[\g<2>] = "),
-    "arr_get": ArrGetSetT(r"(\w+) ?= ?(\w+) ?\(([A-Za-z0-9\- ]+)\)", r"\g<1> = \g<2>[\g<3>]"),
+    "arr_get": ArrGetSetT(
+        r"(\w+) ?= ?(\w+) ?\(([A-Za-z0-9\- ]+)\)", r"\g<1> = \g<2>[\g<3>]"
+    ),
     "implicit_none": Transformation("IMPLICIT NONE", ""),
     "parameter": ParameterT(
         r"(DOUBLE PRECISION|INTEGER|REAL|PARAMETER) ?\(?(.+)\)?\s*$",
         r"\g<2>",
-        ("double_prec_bare", "int_bare", "real_bare", "type_redef")
+        ("double_prec_bare", "int_bare", "real_bare", "type_redef"),
     ),
     "double_prec_bare": Transformation(r"DOUBLE PRECISION ([\w,]+)\s*$", r""),
     "int_bare": Transformation(r"INTEGER ([\w,]+)\s*$", r""),
@@ -258,7 +262,7 @@ line_replace = {
     "double_redef": Transformation("DBLE\(", "float("),
     "bool_constant": BoolT(r"\.(TRUE|FALSE)\.", r"\g<1>"),
     "double_constant": Transformation(
-        r"(\d+)(?:[DEd])(-?)\+?0*(\d+)", r"\g<1>e\g<2>\g<3>"
+        r"(\d+)(?:D|E)(-?)\+?0*(\d+)", r"\g<1>e\g<2>\g<3>"
     ),
     "file_return": TemplateTransformation(r"^\s*sla_$cfn\s+=\s+(.+)", r"return \g<1>"),
     "function_call": FuncCallT(r"sla_(\w+) ?\((.+)\)", r"cls.\g<1>(\g<2>)"),
@@ -302,8 +306,9 @@ def first_pass(in_file_lines):
             continue
         append_or_replace(output_lines, line_index, current_line)
         line_index += 1
-    
+
     return output_lines
+
 
 def clean_fn_arr(in_olines):
     non_ascii = r"[ *+=\-\)\(\\/,_	]"
@@ -330,21 +335,21 @@ def clean_file(in_fn_args, fn_returns, in_file_name, in_file_lines):
     t_list = [list() for _ in range(n_lines)]
     file_args = IndexedSet(in_fn_args)
     known_arrs = IndexedSet()
-    
+
     line_replace["file_return"]["cfn"] = in_file_name.upper()
     for ln in range(n_lines):
         ll = l_list[ln]
         for tk, tt in line_replace.items():
             if tt.test(ll) and (
-                    tk != "function_call"
-                    or "f_function" not in t_list[ln]
-                    and "function" not in t_list[ln]
+                tk != "function_call"
+                or "f_function" not in t_list[ln]
+                and "function" not in t_list[ln]
             ):
                 t_list[ln].append(tk)
-    
+
     if c_debug:
         print("====================================")
-    
+
     o_lines = []
     cur_ind_lvl = 0
     for l_num, l_trans in enumerate(t_list):
@@ -370,22 +375,22 @@ def clean_file(in_fn_args, fn_returns, in_file_name, in_file_lines):
         tf_line = ("\t" * (cur_ind_lvl + local_change)) + tf_line.strip()
         o_lines.append(tf_line)
         cur_ind_lvl += global_change
-    
+
     r_str = ",".join(fn_returns)
     if "sla_" not in r_str:
         o_lines.append(f"\t\treturn {','.join(fn_returns)}")
         ind_set_extend(file_args, fn_returns)
-    
+
     o_lines = dict(enumerate(o_lines))
     clean_fn_arr(o_lines)
-    
+
     return list(o_lines.values())
 
 
 def parse_pyf():
     if Path("parsed_pyf.json").exists():
         return json.load(open("parsed_pyf.json"))
-    
+
     in_pyf = (Path("pyslalib") / "slalib.pyf").resolve().open("r")
     fn_name = ""
     fn_info = {}
@@ -421,7 +426,7 @@ def main():
     global converted
     global inputted_files
     global c_debug
-    
+
     converted_path = Path("converted")
     converted_path.mkdir(parents=True, exist_ok=True)
     pyf_info = parse_pyf()
@@ -438,26 +443,26 @@ def main():
     )
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--random", action="store_true")
-    
+
     parsed_args = parser.parse_args()
-    
+
     c_debug = parsed_args.debug
-    
+
     with open("pypyslalib.py", "r") as fp:
         ff = fp.read()
         converted = IndexedSet(re.findall("def (\\w+)", ff))
-    
+
     print(len(converted), " functions have been converted previously")
     inputted_files = IndexedSet(parsed_args.in_file)
     file_list = IndexedSet([x.stem.lower() for x in Path("pyslalib").glob("*.f")])
     if parsed_args.random:
         inputted_files.add(random.choice(file_list - converted))
-    
+
     inputted_files = inputted_files - converted
-    
+
     with open("internal_license.txt", "r") as fp:
         inline_license = [x.strip() for x in fp.read().strip().split(";;;;")]
-    
+
     n_files_convert = 0
     while inputted_files and parsed_args.limit:
         in_fn = inputted_files.pop()
@@ -465,17 +470,17 @@ def main():
             converted.add(in_fn)
             continue
         in_fpa = Path("pyslalib") / f"{in_fn}.f"
-        
+
         with open(in_fpa, "r") as if_fp:
             print("----------------------")
             print("converting ", in_fpa)
             file_lines = if_fp.read().splitlines()
-            
+
             file_lines = first_pass(file_lines)
             file_lines = clean_file(
                 pyf_info[in_fn]["in"], pyf_info[in_fn]["out"], in_fn, file_lines
             )
-            
+
             final_file_str = "\n".join(file_lines)
             final_file_str = autopep8.fix_code(
                 final_file_str, options={"aggressive": 3}
