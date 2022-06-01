@@ -52,7 +52,7 @@ class FParser(Singleton):
         
         self.rel_op = pp.oneOf(".LT. .GT. .EQ. .LE. .GE. .NE.")
         
-        self.comb_op = pp.oneOf(".AND. .OR. OR.")
+        self.comb_op = pp.oneOf(".AND. .OR. OR. AND.")
         
         self.equal_op = pp.Literal("=")
         
@@ -67,7 +67,7 @@ class FParser(Singleton):
         
         self.factor = pp.Forward()
         self.factor << self.atom + pp.ZeroOrMore((self.pow + self.factor))
-        self.term = self.factor + pp.ZeroOrMore((self.mul_op + self.factor))
+        self.term = pp.Opt(self.add_op) + self.factor + pp.ZeroOrMore((self.mul_op + self.factor))
         self.arith_expr = self.term + pp.ZeroOrMore((self.add_op + self.term))
         self.relational = self.arith_expr + pp.ZeroOrMore((self.rel_op + self.arith_expr))
         self.equal_terms = self.relational + pp.ZeroOrMore((self.comb_op + self.relational))
@@ -214,18 +214,18 @@ class TObject:
             inputted_files.add(fn_name)
     
     @classmethod
-    def test(cls, inst, i_type, results, ii, **kwargs):
+    def test(cls, inst, i_type, results, ii):
         raise NotImplementedError
     
     @classmethod
-    def transform(cls, inst, i_type, results, ii, **kwargs):
+    def transform(cls, inst, i_type, results, ii):
         raise NotImplementedError
 
 
 class TFn(TObject):
     @classmethod
     def test(cls, inst, i_type, results, ii):
-        return (results[ii] in inst.fns) and (ii < len(results) - 1) and (results[ii+1] == "(")
+        return (results[ii] in inst.fns) and (ii < inst.r_len - 1) and (results[ii+1] == "(")
     
     @classmethod
     def transform(cls, inst, i_type, results, ii):
@@ -235,7 +235,7 @@ class TFn(TObject):
 class TBadFn(TObject):
     @classmethod
     def test(cls, inst, i_type, results, ii):
-        return (results[ii] in inst.bad_fns) and (ii < len(results) - 1) and (results[ii + 1] == "(")
+        return (results[ii] in inst.bad_fns) and (ii < inst.r_len - 1) and (results[ii + 1] == "(")
     
     @classmethod
     def transform(cls, inst, i_type, results, ii):
@@ -269,12 +269,12 @@ class TForEq(TObject):
         return i_type == "for" and results[ii] == "="
     
     @classmethod
-    def transform(cls, inst, i_type, results, ii, r_len=None):
+    def transform(cls, inst, i_type, results, ii):
         results[ii] = " in range("
-        for jj in range(ii + 1, r_len, 2):
+        for jj in range(ii + 1, inst.r_len, 2):
             if cls.test_token(inst.parse.num, results[jj]):
                 results[jj] = str(int(results[jj]) - 1)
-        results[r_len - 1] += "):"
+        results[inst.r_len - 1] += "):"
 
 
 class TArrDef(TObject):
@@ -283,9 +283,7 @@ class TArrDef(TObject):
         return i_type in ("int", "float") and results[ii] == "(" and cls.test_token(inst.parse.var, results[ii - 1])
     
     @classmethod
-    def transform(cls, inst, i_type, results, ii, r_len=None):
-        if r_len is None:
-            r_len = len(results)
+    def transform(cls, inst, i_type, results, ii):
         dtype_stmt = ", dtype=int" if i_type == "int" else ", dtype=float"
 
         inst.def_arrays.add(results[ii - 1])
@@ -301,14 +299,14 @@ class TArrDef(TObject):
             else:
                 results[ii] = " = np.zeros("
                 results[clse_par] = f"{dtype_stmt})"
-            if (clse_par + 1) < r_len and results[clse_par + 1] == ",":
+            if (clse_par + 1) < inst.r_len and results[clse_par + 1] == ",":
                 results[clse_par + 1] = ";"
 
 
 class TVarDef(TObject):
     @classmethod
-    def test(cls, inst, i_type, results, ii, r_len=None):
-        return i_type in ("int", "float") and ((ii == (r_len - 1)) or (results[ii + 1] == ",")) and cls.test_token(
+    def test(cls, inst, i_type, results, ii):
+        return i_type in ("int", "float") and ((ii == (inst.r_len - 1)) or (results[ii + 1] == ",")) and cls.test_token(
             inst.parse.var, results[ii]) and (not inst.arr_decl)
     
     @classmethod
@@ -330,7 +328,7 @@ class TVarDef(TObject):
 
 class TImpct(TObject):
     @classmethod
-    def test(cls, inst, i_type, results, ii, r_len=None):
+    def test(cls, inst, i_type, results, ii):
         return i_type == "implicit"
     
     @classmethod
@@ -340,7 +338,7 @@ class TImpct(TObject):
 
 class TStrDef(TObject):
     @classmethod
-    def test(cls, inst, i_type, results, ii, r_len=None):
+    def test(cls, inst, i_type, results, ii):
         return i_type == "char" and results[ii] == "*(*)"
     
     @classmethod
@@ -367,13 +365,18 @@ class TSingleLineIf(TObject):
     def transform(cls, inst, i_type, results, ii):
         inst.wc = 0
         rv = [*results[ii + 1:], *results[:ii + 1]]
-        rv[-1] += f" else {rv[0]}"
-        return rv, len(results)
+        ei = 0
+        for xi, xv in enumerate(rv):
+            if xv == "=":
+                ei = xi
+                break
+        rv[-1] += f" else {' '.join(rv[:ei])}"
+        return rv, inst.r_len
 
 
 class TSlaCheck(TObject):
     @classmethod
-    def test(cls, inst, i_type, results, ii, r_len=None):
+    def test(cls, inst, i_type, results, ii):
         return i_type == "expr" and cls.test_token(inst.parse.var, results[ii]) and "sla_" in results[ii]
     
     @classmethod
@@ -419,9 +422,9 @@ class TCallStmt(TObject):
         
         out_args = results[split_loc+1:clse_par]
         call_and_in_args = results[:split_loc]
-        after_call = results[clse_par:] if clse_par <= (len(results) - 1) else []
+        after_call = results[clse_par:] if clse_par <= (inst.r_len - 1) else []
         call_and_in_args[ii - 1] = f" = {call_and_in_args[ii - 1]}"
-        return out_args + call_and_in_args + after_call, len(results)
+        return out_args + call_and_in_args + after_call, inst.r_len
 
 
 class TParamFix(TObject):
@@ -436,7 +439,22 @@ class TParamFix(TObject):
         results[clse_par] = ""
         for ci in cmmas_btwn[1]:
             results[ci] = ";"
-        return results, len(results)
+        return results, inst.r_len
+
+
+class TUniNeg(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return \
+            ii < (inst.r_len - 2) and \
+            results[ii] == "-" and \
+            (ii == 0 or (not cls.test_token(inst.parse.var_num, results[ii - 1]))) and \
+            not cls.test_token(inst.parse.var_num, results[ii + 1])
+
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        results[ii] = ""
+        results[ii + 1] = f"-{results[ii + 1]}"
 
 
 class TFuncDef(TObject):
@@ -468,7 +486,7 @@ import numpy as np
 class SLALib:
 	@classmethod
 	def {fn_name} (cls, {", ".join(inst.func_ins)}):"""
-        return rv, len(results)
+        return rv, inst.r_len
 
 
 class FTransformer:
@@ -517,6 +535,7 @@ class FTransformer:
         "NINT": "np.rint",
         "AINT": "np.trunc",
         "ABS": "np.abs",
+        "DABS": "np.abs",
         "COS": "np.cos",
         "SIN": "np.sin",
         "TAN": "np.tan",
@@ -554,22 +573,11 @@ class FTransformer:
         self.lc = 0
         self.wc = 0
         
+        self.r_len = 0
         self.arr_decl = False
     
     def reset(self):
-        self.def_arrays = set()
-        self.def_vars = set()
-        
-        self.func_ins = set()
-        self.func_outs = set()
-        
-        self.parse = FParser()
-        
-        self.ind_lvl = 0
-        self.lc = 0
-        self.wc = 0
-        
-        self.arr_decl = False
+        self.__init__()
     
     def eval(self, i_string, parse_all=False):
         global c_debug
@@ -588,13 +596,13 @@ class FTransformer:
         
         self.arr_decl = False
         
-        r_len = len(results)
+        self.r_len = len(results)
         self.lc, self.wc = self.indent_change.get(i_type, (0, 0))
         if c_debug:
             print("===================")
             print(i_string)
             print(i_type, " ;;;; ", results)
-        for ii in range(r_len):
+        for ii in range(self.r_len):
             
             # Transform Functions
             if TFn.test(self, i_type, results, ii):
@@ -614,14 +622,14 @@ class FTransformer:
             
             # Transform equal inside for into in range
             if TForEq.test(self, i_type, results, ii):
-                TForEq.transform(self, i_type, results, ii, r_len)
+                TForEq.transform(self, i_type, results, ii)
             
             # Transform fortran array declarations
             if TArrDef.test(self, i_type, results, ii):
-                TArrDef.transform(self, i_type, results, ii, r_len)
+                TArrDef.transform(self, i_type, results, ii)
             
             # Recognize fortran variable declarations
-            if TVarDef.test(self, i_type, results, ii, r_len):
+            if TVarDef.test(self, i_type, results, ii):
                 TVarDef.transform(self, i_type, results, ii)
             
             # Destroy IMPLICIT Statements
@@ -643,11 +651,15 @@ class FTransformer:
             # Fix the Fortran CHARACTER declaration
             if TStrDef.test(self, i_type, results, ii):
                 TStrDef.transform(self, i_type, results, ii)
+            
+            # Fix Unary Negative sign
+            if TUniNeg.test(self, i_type, results, ii):
+                TUniNeg.transform(self, i_type, results, ii)
         
         # Second Pass to deal with overall restructuring of the code
-        r_len = len(results)
+        self.r_len = len(results)
         ii = 0
-        while ii < r_len:
+        while ii < self.r_len:
             # Transform CALL to classmethod calls
             if TCallStmt.test(self, i_type, results, ii):
                 results, ii = TCallStmt.transform(self, i_type, results, ii)
@@ -760,8 +772,7 @@ def main():
     
     inputted_files = inputted_files - converted
     
-    with open("internal_license.txt", "r") as fp:
-        inline_license = [x.strip() for x in fp.read().strip().split(";;;;")]
+    inline_license = Path("internal_license.txt").read_text()
     
     n_files_convert = 0
     while inputted_files and parsed_args.limit:
@@ -778,8 +789,8 @@ def main():
         
         final_file_str = "\n".join(file_lines)
         
-        for il in inline_license:
-            final_file_str = final_file_str.replace(il, "# ")
+        final_file_str = final_file_str.replace(inline_license, "\t\t#")
+        final_file_str = final_file_str.replace(inline_license.replace("\t","    "), "        #")
         ou_fpa = Path("converted") / f"{in_fn}.py"
         
         with open(ou_fpa, "w") as cp_fp:

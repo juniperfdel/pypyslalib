@@ -3,7 +3,6 @@ import time
 
 import numpy as np
 
-
 class SLALib:
     # 2 * PI
     D2PI = 6.2831853071795864769252867665590057683943387987502
@@ -7497,4 +7496,279 @@ class SLALib:
         SIGN, IHMSF = cls.dd2tf(NDP, DAYS)
 
         return SIGN, IHMSF
+    
+    @classmethod
+    def intin(cls, STRING, NSTRT, IRESLT):
+        # +
+        # - - - - - -
+        # I N T I N
+        # - - - - - -
+        #
+        # Convert free-format input into an integer
+        #
+        # Given:
+        # STRING     c     string containing number to be decoded
+        # NSTRT      i     pointer to where decoding is to start
+        # IRESLT     i     current value of result
+        #
+        # Returned:
+        # NSTRT      i      advanced to next number
+        # IRESLT     i      result
+        # JFLAG      i      status: -1 = -OK, 0 = +OK, 1 = null, 2 = error
+        #
+        # Called:  sla__IDCHI
+        #
+        # Notes:
+        #
+        # 1     The reason INTIN has separate OK status values for +
+        # and - is to enable minus zero to be detected.   This is
+        # of crucial importance when decoding mixed-radix numbers.
+        # For example, an angle expressed as deg, arcmin, arcsec
+        # may have a leading minus sign but a zero degrees field.
+        #
+        # 2     A TAB is interpreted as a space.
+        #
+        # 3     The basic format is the sequence of fields #^, where
+        # # is a sign character + or -, and ^ means a string of
+        # decimal digits.
+        #
+        # 4     Spaces:
+        #
+        # .  Leading spaces are ignored.
+        #
+        # .  Spaces between the sign and the number are allowed.
+        #
+        # .  Trailing spaces are ignored;  the first signifies
+        # end of decoding and subsequent ones are skipped.
+        #
+        # 5     eelimiters:
+        #
+        # .  Any character other than +,-,0-9 or space may be
+        # used to signal the end of the number and terminate
+        # decoding.
+        #
+        # .  Comma is recognized by INTIN as a special case;  it
+        # is skipped, leaving the pointer on the next character.
+        # See 9, below.
+        #
+        # 6     The sign is optional.  The default is +.
+        #
+        # 7     A "null result" occurs when the string of characters being
+        # decoded does not begin with +,- or 0-9, or consists
+        # entirely of spaces.  When this condition is detected, JFLAG
+        # is set to 1 and IRESLT is left untouched.
+        #
+        # 8     NSTRT = 1 for the first character in the string.
+        #
+        # 9     On return from INTIN, NSTRT is set ready for the next
+        # decode - following trailing blanks and any comma.  If a
+        # delimiter other than comma is being used, NSTRT must be
+        # incremented before the next call to INTIN, otherwise
+        # all subsequent calls will return a null result.
+        #
+        # 10    errors (JFLAG=2) occur when:
+        #
+        # .  there is a + or - but no number;  or
+        #
+        # .  the number is greater than BIG (defined below).
+        #
+        # 11    When an error has been detected, NSTRT is left
+        # pointing to the character following the last
+        # one used before the error came to light.
+        #
+        # 12    See also FLOTIN and eFLTIN.
+        #
+        # P.T.Wallace   Starlink   27 April 1998
+        #
+        # Copyright (C) 1998 Rutherford Appleton Laboratory
+        #
+        # -
+        STRING = re.sub(r"\s+", r" ", STRING).replace("D", "e").replace("E", "e")
+        STRARR = [xx.strip() for xx in re.split(r"[^+-0-9.e]", STRING)]
+        JFLAG = 0
+        try:
+            IRESLT = int(STRARR[NSTRT])
+        except ValueError:
+            JFLAG = 2
+        NSTRT += 1
+        
+        return IRESLT, JFLAG
 
+    @classmethod
+    def geoc(cls, P, H):
+        # +
+        # - - - - -
+        # G E O C
+        # - - - - -
+        #
+        # Convert geodetic position to geocentric (double precision)
+        #
+        # Given:
+        # P     dp     latitude (geodetic, radians)
+        # H     dp     height above reference spheroid (geodetic, metres)
+        #
+        # Returned:
+        # R     dp     distance from Earth axis (AU)
+        # Z     dp     distance from plane of Earth equator (AU)
+        #
+        # Notes:
+        #
+        # 1  Geocentric latitude can be obtained by evaluating ATAN2(Z,R).
+        #
+        # 2  IAU 1976 constants are used.
+        #
+        # Reference:
+        #
+        # Green,R.M., Spherical Astronomy, CUP 1985, p98.
+        #
+        # Last revision:   22 July 2004
+        #
+        # Copyright P.T.Wallace.  All rights reserved.
+        #
+        # -
+
+        # Earth equatorial radius (metres)
+        A0 = 6378140e0
+
+        # Reference spheroid flattening factor and useful function
+        F = 1e0 / 298.257e0
+        B = (1e0 - F) ** 2
+
+        # Astronomical unit in metres
+        AU = 1.49597870e11
+
+        # Geodetic to geocentric conversion
+        SP = np.sin(P)
+        CP = np.cos(P)
+        C = 1e0 / np.sqrt(CP * CP + B * SP * SP)
+        S = B * C
+        R = (A0 * C + H) * CP / AU
+        Z = (A0 * S + H) * SP / AU
+
+        return R, Z
+
+
+    @classmethod
+    def dmat(cls, N, A, Y):
+        # +
+        # - - - - -
+        # D M A T
+        # - - - - -
+        #
+        # Matrix inversion & solution of simultaneous equations
+        # (double precision)
+        #
+        # For the set of n simultaneous equations in n unknowns:
+        # A.Y = X
+        #
+        # where:
+        # A is a non-singular N x N matrix
+        # Y is the vector of N unknowns
+        # X is the known vector
+        #
+        # DMATRX computes:
+        # the inverse of matrix A
+        # the determinant of matrix A
+        # the vector of N unknowns
+        #
+        # Arguments:
+        #
+        # symbol  type   dimension           before              after
+        #
+        # N      i                    no. of unknowns       unchanged
+        # A      d      (N,N)             matrix             inverse
+        # Y      d       (N)            known vector      solution vector
+        # D      d                           -             determinant
+        # * JF     i                           -           singularity flag
+        # IW     i       (N)                 -              workspace
+        #
+        # * JF is the singularity flag.  If the matrix is non-singular, JF=0
+        # is returned.  If the matrix is singular, JF=-1 & D=0D0 are
+        # returned.  In the latter case, the contents of array A on return
+        # are undefined.
+        #
+        # Algorithm:
+        # Gaussian elimination with partial pivoting.
+        #
+        # Speed:
+        # Very fast.
+        #
+        # Accuracy:
+        # Fairly accurate - errors 1 to 4 times those of routines optimized
+        # for accuracy.
+        #
+        # P.T.Wallace   Starlink   4 December 2001
+        #
+        # Copyright (C) 2001 Rutherford Appleton Laboratory
+        #
+        #
+        #
+        # -
+        IW = np.zeros(N, dtype=int)
+        SFA = 1e-20
+
+        JF = 0
+        D = 1e0
+        for K in range(N):
+            AMX = np.abs(A[K, K])
+            IMX = K
+            if K != N:
+                for I in range(K + 0, N):
+                    T = np.abs(A[I, K])
+                    if T > AMX:
+                        AMX = T
+                        IMX = I
+
+            if AMX < SFA:
+                JF = -1
+            else:
+                if IMX != K:
+                    for J in range(N):
+                        T = A[K, J]
+                        A[K, J] = A[IMX, J]
+                        A[IMX, J] = T
+
+                    T = Y[K]
+                    Y[K] = Y[IMX]
+                    Y[IMX] = T
+                    D = -D
+
+                IW[K] = IMX
+                AKK = A[K, K]
+                D = D * AKK
+                if np.abs(D) < SFA:
+                    JF = -1
+                else:
+                    AKK = 1e0 / AKK
+                    A[K, K] = AKK
+                    for J in range(N):
+                        A[K, J] = A[K, J] * AKK if (J != K) else A[K, J]
+
+                    YK = Y[K] * AKK
+                    Y[K] = YK
+                    for I in range(N):
+                        AIK = A[I, K]
+                        if I != K:
+                            for J in range(N):
+                                A[I, J] = (
+                                    A[I, J] - AIK * A[K, J] if (J != K) else A[I, J]
+                                )
+
+                            Y[I] = Y[I] - AIK * YK
+
+                    for I in range(N):
+                        A[I, K] = -A[I, K] * AKK if (I != K) else A[I, K]
+
+        if JF != 0:
+            D = 0e0
+        else:
+            for K in range(N):
+                NP1MK = N + 1 - K
+                KI = IW[NP1MK]
+                if NP1MK != KI:
+                    for I in range(N):
+                        T = A[I, NP1MK]
+                        A[I, NP1MK] = A[I, KI]
+                        A[I, KI] = T
+
+        return D, JF, IW
