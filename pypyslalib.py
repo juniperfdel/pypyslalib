@@ -1,3 +1,4 @@
+import re
 import time
 
 import numpy as np
@@ -637,10 +638,7 @@ class SLALib:
         # -
 
         # Convert to uppercase and validate SYSTEM
-        if system_name.upper() not in ["FK4", "FK5"]:
-            ra = -99e0
-            dec = -99e0
-        else:
+        if system_name.upper() == "FK4" or system_name.upper() != "FK4" and system_name.upper() == "FK5":
             # Generate appropriate precession matrix
             if system_name.upper() == "FK4":
                 prec_mat = cls.prebn(start_epoch, end_epoch)
@@ -657,6 +655,9 @@ class SLALib:
             ra, dec = cls.dcc2s(v2)
             ra = cls.dranrm(ra)
 
+        else:
+            ra = -99e0
+            dec = -99e0
         return ra, dec
 
     @classmethod
@@ -1442,32 +1443,6 @@ class SLALib:
         vm = np.where(vm <= 0e0, 1e0, vm)
 
         return v / vm, vm
-
-    @classmethod
-    def dimxv(cls, dm, va):
-        # +
-        # - - - - - -
-        # D I M X V
-        # - - - - - -
-        #
-        # Performs the 3-D backward unitary transformation:
-        #
-        # vector VB = (inverse of matrix DM) * vector VA
-        #
-        # (double precision)
-        #
-        # (n.b.  the matrix must be unitary, as this routine assumes that
-        # the inverse and transpose are identical)
-        #
-        # Given:
-        # DM       dp(3,3)    matrix
-        # VA       dp(3)      vector
-        #
-        # Returned:
-        # VB       dp(3)      result vector
-
-        # Inverse of matrix DM * vector VA -> vector VW
-        return dm.I @ va
 
     @classmethod
     def mappa(cls, eq, date):
@@ -5191,6 +5166,52 @@ class SLALib:
         return rad, j
 
     @classmethod
+    def dtf2d(cls, IHOUR, IMIN, SEC):
+        # +
+        # - - - - - -
+        # D T F 2 D
+        # - - - - - -
+        #
+        # Convert hours, minutes, seconds to days (double precision)
+        #
+        # Given:
+        # IHOUR       int       hours
+        # IMIN        int       minutes
+        # SEC         dp        seconds
+        #
+        # Returned:
+        # DAYS        dp        interval in days
+        # J           int       status:  0 = OK
+        # 1 = IHOUR outside range 0-23
+        # 2 = IMIN outside range 0-59
+        # 3 = SeC outside range 0-59.999...
+        #
+        # Notes:
+        #
+        # 1)  The result is computed even if any of the range checks fail.
+        #
+        # 2)  The sign must be dealt with outside this routine.
+        #
+        # P.T.Wallace   Starlink   July 1984
+        # -
+
+        # Seconds per day
+        D2S = 86400e0
+
+        # Preset status
+        J = 0
+
+        # Validate sec, min, hour
+        J = 3 if (SEC < 0e0 or SEC >= 60e0) else J
+        J = 2 if (IMIN < 0.0 or IMIN > 59) else J
+        J = 1 if (IHOUR < 0.0 or IHOUR > 23) else J
+
+        # Compute interval
+        DAYS = (60e0 * (60e0 * IHOUR + IMIN) + SEC) / D2S
+
+        return DAYS, J
+
+    @classmethod
     def bear(cls, a1, b1, a2, b2):
         # +
         # - - - - -
@@ -6890,3 +6911,590 @@ class SLALib:
         PV[6] = YD * SINEPS + ZD * COSEPS
 
         return PV
+    
+    @classmethod
+    def dpav(cls, V1, V2):
+        # +
+        # - - - - -
+        # D P A V
+        # - - - - -
+        #
+        # Position angle of one celestial direction with respect to another.
+        #
+        # (double precision)
+        #
+        # Given:
+        # V1    d(3)    direction cosines of one point
+        # V2    d(3)    direction cosines of the other point
+        #
+        # (The coordinate frames correspond to RA,Dec, Long,Lat etc.)
+        #
+        # The result is the bearing (position angle), in radians, of point
+        # V2 with respect to point V1.  It is in the range +/- pi.  The
+        # sense is such that if V2 is a small distance east of V1, the
+        # bearing is about +pi/2.  Zero is returned if the two points
+        # are coincident.
+        #
+        # V1 and V2 need not be unit vectors.
+        #
+        # The routine sla_DBEAR performs an equivalent function except
+        # that the points are specified in the form of spherical
+        # coordinates.
+        #
+        # Last revision:   16 March 2005
+        #
+        # Copyright P.T.Wallace.  All rights reserved.
+        #
+        # -
+
+        V1 = np.zeros(3)
+        V2 = np.zeros(3)
+
+        # The unit vector to point 1.
+        X1 = V1[1]
+        Y1 = V1[2]
+        Z1 = V1[3]
+        W = np.sqrt(X1 * X1 + Y1 * Y1 + Z1 * Z1)
+        if W != 0e0:
+            X1 = X1 / W
+            Y1 = Y1 / W
+            Z1 = Z1 / W
+
+        # The vector to point 2.
+        X2 = V2[1]
+        Y2 = V2[2]
+        Z2 = V2[3]
+
+        # Position angle.
+        SQ = Y2 * X1 - X2 * Y1
+        CQ = Z2 * (X1 * X1 + Y1 * Y1) - Z1 * (X2 * X1 + Y2 * Y1)
+        CQ = 1e0 if (SQ == 0e0 and CQ == 0e0) else CQ
+        return np.arctan2(SQ, CQ)
+
+    @classmethod
+    def flotin(cls, STRING, NSTRT, RESLT=0.):
+        # +
+        # - - - - - - -
+        # F L O T I N
+        # - - - - - - -
+        #
+        # Convert free-format input into single precision floating point
+        #
+        # Given:
+        # STRING     c     string containing number to be decoded
+        # NSTRT      i     pointer to where decoding is to start
+        # RESLT      r     current value of result
+        #
+        # Returned:
+        # NSTRT      i      advanced to next number
+        # RESLT      r      result
+        # JFLAG      i      status: -1 = -OK, 0 = +OK, 1 = null, 2 = error
+        #
+        # Called:  sla_DFLTIN
+        #
+        # Notes:
+        #
+        # 1     The reason FLOTIN has separate OK status values for +
+        # and - is to enable minus zero to be detected.   This is
+        # of crucial importance when decoding mixed-radix numbers.
+        # For example, an angle expressed as deg, arcmin, arcsec
+        # may have a leading minus sign but a zero degrees field.
+        #
+        # 2     A TAB is interpreted as a space, and lowercase characters
+        # are interpreted as uppercase.
+        #
+        # 3     The basic format is the sequence of fields #^.^@#^, where
+        # # is a sign character + or -, ^ means a string of decimal
+        # digits, and @, which indicates an exponent, means D or E.
+        # Various combinations of these fields can be omitted, and
+        # embedded blanks are permissible in certain places.
+        #
+        # 4     Spaces:
+        #
+        # .  Leading spaces are ignored.
+        #
+        # .  Embedded spaces are allowed only after +, -, D or E,
+        # and after the decomal point if the first sequence of
+        # digits is absent.
+        #
+        # .  Trailing spaces are ignored;  the first signifies
+        # end of decoding and subsequent ones are skipped.
+        #
+        # 5     eelimiters:
+        #
+        # .  Any character other than +,-,0-9,.,D,E or space may be
+        # used to signal the end of the number and terminate
+        # decoding.
+        #
+        # .  Comma is recognized by FLOTIN as a special case;  it
+        # is skipped, leaving the pointer on the next character.
+        # See 13, below.
+        #
+        # 6     Both signs are optional.  The default is +.
+        #
+        # 7     The mantissa ^.^ defaults to 1.
+        #
+        # 8     The exponent @#^ defaults to e0.
+        #
+        # 9     The strings of decimal digits may be of any length.
+        #
+        # 10    The decimal point is optional for whole numbers.
+        #
+        # 11    A "null result" occurs when the string of characters being
+        # decoded does not begin with +,-,0-9,.,D or E, or consists
+        # entirely of spaces.  When this condition is detected, JFLAG
+        # is set to 1 and RESLT is left untouched.
+        #
+        # 12    NSTRT = 1 for the first character in the string.
+        #
+        # 13    On return from FLOTIN, NSTRT is set ready for the next
+        # decode - following trailing blanks and any comma.  If a
+        # delimiter other than comma is being used, NSTRT must be
+        # incremented before the next call to FLOTIN, otherwise
+        # all subsequent calls will return a null result.
+        #
+        # 14    errors (JFLAG=2) occur when:
+        #
+        # .  a +, -, D or E is left unsatisfied;  or
+        #
+        # .  the decimal point is present without at least
+        # one decimal digit before or after it;  or
+        #
+        # .  an exponent more than 100 has been presented.
+        #
+        # 15    When an error has been detected, NSTRT is left
+        # pointing to the character following the last
+        # one used before the error came to light.  This
+        # may be after the point at which a more sophisticated
+        # program could have detected the error.  For example,
+        # FLOTIN does not detect that '1E999' is unacceptable
+        # (on a computer where this is so) until the entire number
+        # has been decoded.
+        #
+        # 16    Certain highly unlikely combinations of mantissa &
+        # exponent can cause arithmetic faults during the
+        # decode, in some cases despite the fact that they
+        # together could be construed as a valid number.
+        #
+        # 17    eecoding is left to right, one pass.
+        #
+        # 18    See also eFLTIN and INTIN
+        #
+        # P.T.Wallace   Starlink   23 November 1995
+        #
+        # Copyright (C) 1995 Rutherford Appleton Laboratory
+        # -
+
+        # Call the double precision version
+        STRING = re.sub(r"\s+", r" ", STRING).replace("D","e").replace("E","e")
+        STRARR = [xx.strip() for xx in re.split(r"[^+-0-9.e]", STRING)]
+        JFLAG = 0
+        try:
+            RESLT = float(STRARR[NSTRT])
+        except ValueError:
+            JFLAG = 2
+        NSTRT += 1
+        return NSTRT, RESLT, JFLAG
+    
+    @classmethod
+    def dfltin(cls, STRING, NSTRT, DRESLT=0.):
+        # +
+        # - - - - - - -
+        # D F L T I N
+        # - - - - - - -
+        #
+        # Convert free-format input into double precision floating point
+        #
+        # Given:
+        # STRING     c     string containing number to be decoded
+        # NSTRT      i     pointer to where decoding is to start
+        # DRESLT     d     current value of result
+        #
+        # Returned:
+        # NSTRT      i      advanced to next number
+        # DRESLT     d      result
+        # JFLAG      i      status: -1 = -OK, 0 = +OK, 1 = null, 2 = error
+        #
+        # Notes:
+        #
+        # 1     The reason eFLTIN has separate OK status values for +
+        # and - is to enable minus zero to be detected.   This is
+        # of crucial importance when decoding mixed-radix numbers.
+        # For example, an angle expressed as deg, arcmin, arcsec
+        # may have a leading minus sign but a zero degrees field.
+        #
+        # 2     A TAB is interpreted as a space, and lowercase characters
+        # are interpreted as uppercase.
+        #
+        # 3     The basic format is the sequence of fields #^.^@#^, where
+        # # is a sign character + or -, ^ means a string of decimal
+        # digits, and @, which indicates an exponent, means D or E.
+        # Various combinations of these fields can be omitted, and
+        # embedded blanks are permissible in certain places.
+        #
+        # 4     Spaces:
+        #
+        # .  Leading spaces are ignored.
+        #
+        # .  Embedded spaces are allowed only after +, -, D or E,
+        # and after the decomal point if the first sequence of
+        # digits is absent.
+        #
+        # .  Trailing spaces are ignored;  the first signifies
+        # end of decoding and subsequent ones are skipped.
+        #
+        # 5     eelimiters:
+        #
+        # .  Any character other than +,-,0-9,.,D,E or space may be
+        # used to signal the end of the number and terminate
+        # decoding.
+        #
+        # .  Comma is recognized by DFLTIN as a special case;  it
+        # is skipped, leaving the pointer on the next character.
+        # See 13, below.
+        #
+        # 6     Both signs are optional.  The default is +.
+        #
+        # 7     The mantissa ^.^ defaults to 1.
+        #
+        # 8     The exponent @#^ defaults to e0.
+        #
+        # 9     The strings of decimal digits may be of any length.
+        #
+        # 10    The decimal point is optional for whole numbers.
+        #
+        # 11    A "null result" occurs when the string of characters being
+        # decoded does not begin with +,-,0-9,.,D or E, or consists
+        # entirely of spaces.  When this condition is detected, JFLAG
+        # is set to 1 and DRESLT is left untouched.
+        #
+        # 12    NSTRT = 1 for the first character in the string.
+        #
+        # 13    On return from eFLTIN, NSTRT is set ready for the next
+        # decode - following trailing blanks and any comma.  If a
+        # delimiter other than comma is being used, NSTRT must be
+        # incremented before the next call to DFLTIN, otherwise
+        # all subsequent calls will return a null result.
+        #
+        # 14    errors (JFLAG=2) occur when:
+        #
+        # .  a +, -, D or E is left unsatisfied;  or
+        #
+        # .  the decimal point is present without at least
+        # one decimal digit before or after it;  or
+        #
+        # .  an exponent more than 100 has been presented.
+        #
+        # 15    When an error has been detected, NSTRT is left
+        # pointing to the character following the last
+        # one used before the error came to light.  This
+        # may be after the point at which a more sophisticated
+        # program could have detected the error.  For example,
+        # DFLTIN does not detect that '1D999' is unacceptable
+        # (on a computer where this is so) until the entire number
+        # has been decoded.
+        #
+        # 16    Certain highly unlikely combinations of mantissa &
+        # exponent can cause arithmetic faults during the
+        # decode, in some cases despite the fact that they
+        # together could be construed as a valid number.
+        #
+        # 17    eecoding is left to right, one pass.
+        #
+        # 18    See also FLOTIN and INTIN
+        #
+        # Called:  sla__IDCHF
+        #
+        # P.T.Wallace   Starlink   18 March 1999
+        #
+        # Copyright (C) 1999 Rutherford Appleton Laboratory
+        #
+        # License:
+        # This program is free software; you can redistribute it and/or modify
+        # it under the terms of the GNU General Public License as published by
+        # the Free Software Foundation; either version 2 of the License, or
+        # (at your option) any later version.
+        #
+        # This program is distributed in the hope that it will be useful,
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        # GNU General Public License for more details.
+        #
+        # You should have received a copy of the GNU General Public License
+        # along with this program (see SLA_CONDITIONS); if not, write to the
+        # Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+        # Boston, MA  02111-1307  USA
+        #
+        # -
+        
+        STRING = re.sub(r"\s+", r" ", STRING).replace("D", "e").replace("E", "e")
+        STRARR = [xx.strip() for xx in re.split(r"[^+-0-9.e]", STRING)]
+        JFLAG = 0
+        try:
+            DRESLT = float(STRARR[NSTRT])
+        except ValueError:
+            JFLAG = 2
+        NSTRT += 1
+        return NSTRT, DRESLT, JFLAG
+
+    @classmethod
+    def cs2c(cls, A, B):
+        # +
+        # - - - - -
+        # C S 2 C
+        # - - - - -
+        #
+        # Spherical coordinates to direction cosines (single precision)
+        #
+        # Given:
+        # A,B      real      spherical coordinates in radians
+        # (RA,Dec), (long,lat) etc.
+        #
+        # Returned:
+        # V        real(3)   x,y,z unit vector
+        #
+        # The spherical coordinates are longitude (+ve anticlockwise looking
+        # from the +ve latitude pole) and latitude.  The Cartesian coordinates
+        # are right handed, with the x axis at zero longitude and latitude, and
+        # the z axis at the +ve latitude pole.
+        #
+        # Last revision:   22 July 2004
+        #
+        # Copyright P.T.Wallace.  All rights reserved.
+        #
+        # License:
+        # This program is free software; you can redistribute it and/or modify
+        # it under the terms of the GNU General Public License as published by
+        # the Free Software Foundation; either version 2 of the License, or
+        # (at your option) any later version.
+        #
+        # This program is distributed in the hope that it will be useful,
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        # GNU General Public License for more details.
+        #
+        # You should have received a copy of the GNU General Public License
+        # along with this program (see SLA_CONDITIONS); if not, write to the
+        # Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+        # Boston, MA  02111-1307  USA
+        #
+        # -
+    
+        V = np.zeros(3)
+    
+        COSB = np.cos(B)
+    
+        V[1] = np.cos(A) * COSB
+        V[2] = np.sin(A) * COSB
+        V[3] = np.sin(B)
+    
+        return V
+
+    @classmethod
+    def cr2af(cls, NDP, ANGLE):
+        # +
+        # - - - - - -
+        # C R 2 A F
+        # - - - - - -
+        #
+        # Convert an angle in radians into degrees, arcminutes, arcseconds
+        # (single precision)
+        #
+        # Given:
+        # NDP       int      number of decimal places of arcseconds
+        # ANGLE     real     angle in radians
+        #
+        # Returned:
+        # SIGN      char     '+' or '-'
+        # IDMSF     int(4)   degrees, arcminutes, arcseconds, fraction
+        #
+        # Notes:
+        #
+        # 1)  NeP less than zero is interpreted as zero.
+        #
+        # 2)  The largest useful value for NeP is determined by the size of
+        # ANGLE, the format of REAL floating-point numbers on the target
+        # machine, and the risk of overflowing IDMSF(4).  On some
+        # architectures, for ANGLE up to 2pi, the available floating-
+        # point precision corresponds roughly to NDP=3.  This is well
+        # below the ultimate limit of NDP=9 set by the capacity of a
+        # typical 32-bit IDMSF(4).
+        #
+        # 3)  The absolute value of ANGLe may exceed 2pi.  In cases where it
+        # does not, it is up to the caller to test for and handle the
+        # case where ANGLE is very nearly 2pi and rounds up to 360 deg,
+        # by testing for IDMSF(1)=360 and setting IDMSF(1-4) to zero.
+        #
+        # Called:  sla_CD2TF
+        #
+        # Last revision:   26 December 2004
+        #
+        # Copyright P.T.Wallace.  All rights reserved.
+        #
+        # License:
+        # This program is free software; you can redistribute it and/or modify
+        # it under the terms of the GNU General Public License as published by
+        # the Free Software Foundation; either version 2 of the License, or
+        # (at your option) any later version.
+        #
+        # This program is distributed in the hope that it will be useful,
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        # GNU General Public License for more details.
+        #
+        # You should have received a copy of the GNU General Public License
+        # along with this program (see SLA_CONDITIONS); if not, write to the
+        # Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+        # Boston, MA  02111-1307  USA
+        #
+        # -
+
+        # Hours to degrees * radians to turns
+        F = 15.0 / 6.283185307179586476925287
+
+        # Scale then use days to h,m,s routine
+        SIGN, IDMSF = cls.cd2tf(NDP, ANGLE * F)
+
+        return SIGN, IDMSF
+
+    @classmethod
+    def dd2tf(cls, NDP, DAYS):
+        # +
+        # - - - - - -
+        # D D 2 T F
+        # - - - - - -
+        #
+        # Convert an interval in days into hours, minutes, seconds
+        # (double precision)
+        #
+        # Given:
+        # NDP      i      number of decimal places of seconds
+        # DAYS     d      interval in days
+        #
+        # Returned:
+        # SIGN     c      '+' or '-'
+        # IHMSF    i(4)   hours, minutes, seconds, fraction
+        #
+        # Notes:
+        #
+        # 1)  NeP less than zero is interpreted as zero.
+        #
+        # 2)  The largest useful value for NeP is determined by the size
+        # of DAYS, the format of DOUBLE PRECISION floating-point numbers
+        # on the target machine, and the risk of overflowing IHMSF(4).
+        # On some architectures, for DAYS up to 1D0, the available
+        # floating-point precision corresponds roughly to NDP=12.
+        # However, the practical limit is NDP=9, set by the capacity of
+        # a typical 32-bit IHMSF(4).
+        #
+        # 3)  The absolute value of eAYS may exceed 1e0.  In cases where it
+        # does not, it is up to the caller to test for and handle the
+        # case where DAYS is very nearly 1D0 and rounds up to 24 hours,
+        # by testing for IHMSF(1)=24 and setting IHMSF(1-4) to zero.
+        #
+        # Last revision:   26 December 2004
+        #
+        # Copyright P.T.Wallace.  All rights reserved.
+        #
+        # -
+    
+        IHMSF = np.zeros(4, dtype=int)
+    
+        # Days to seconds
+        D2S = 86400e0
+    
+        # Handle sign
+        SIGN = "+" if DAYS >= 0e0 else "-"
+        # Field units in terms of least significant figure
+        NRS = 1
+        for _ in range(NDP):
+            NRS = NRS * 10
+    
+        RS = NRS
+        RM = RS * 60e0
+        RH = RM * 60e0
+    
+        # Round interval and express in smallest units required
+        A = np.rint(RS * D2S * np.abs(DAYS))
+    
+        # Separate into fields
+        AH = np.trunc(A / RH)
+        A = A - AH * RH
+        AM = np.trunc(A / RM)
+        A = A - AM * RM
+        AS = np.trunc(A / RS)
+        AF = A - AS * RS
+    
+        # Return results
+        IHMSF[1] = np.maximum(np.rint(AH), 0)
+        IHMSF[2] = np.maximum(np.minimum(np.rint(AM), 59), 0)
+        IHMSF[3] = np.maximum(np.minimum(np.rint(AS), 59), 0)
+        IHMSF[4] = np.maximum(np.rint(np.minimum(AF, RS - 1e0)), 0)
+    
+        return SIGN, IHMSF
+
+    @classmethod
+    def cd2tf(cls, NDP, DAYS):
+        # +
+        # - - - - - -
+        # C D 2 T F
+        # - - - - - -
+        #
+        # Convert an interval in days into hours, minutes, seconds
+        #
+        # (single precision)
+        #
+        # Given:
+        # NDP       int      number of decimal places of seconds
+        # DAYS      real     interval in days
+        #
+        # Returned:
+        # SIGN      char     '+' or '-'
+        # IHMSF     int(4)   hours, minutes, seconds, fraction
+        #
+        # Notes:
+        #
+        # 1)  NeP less than zero is interpreted as zero.
+        #
+        # 2)  The largest useful value for NeP is determined by the size of
+        # DAYS, the format of REAL floating-point numbers on the target
+        # machine, and the risk of overflowing IHMSF(4).  On some
+        # architectures, for DAYS up to 1.0, the available floating-
+        # point precision corresponds roughly to NDP=3.  This is well
+        # below the ultimate limit of NDP=9 set by the capacity of a
+        # typical 32-bit IHMSF(4).
+        #
+        # 3)  The absolute value of eAYS may exceed 1.0.  In cases where it
+        # does not, it is up to the caller to test for and handle the
+        # case where DAYS is very nearly 1.0 and rounds up to 24 hours,
+        # by testing for IHMSF(1)=24 and setting IHMSF(1-4) to zero.
+        #
+        # Called:  sla_DD2TF
+        #
+        # Last revision:   26 December 2004
+        #
+        # Copyright P.T.Wallace.  All rights reserved.
+        #
+        # License:
+        # This program is free software; you can redistribute it and/or modify
+        # it under the terms of the GNU General Public License as published by
+        # the Free Software Foundation; either version 2 of the License, or
+        # (at your option) any later version.
+        #
+        # This program is distributed in the hope that it will be useful,
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        # GNU General Public License for more details.
+        #
+        # You should have received a copy of the GNU General Public License
+        # along with this program (see SLA_CONDITIONS); if not, write to the
+        # Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+        # Boston, MA  02111-1307  USA
+        #
+        # -
+
+        # Call double precision version
+        SIGN, IHMSF = cls.dd2tf(NDP, DAYS)
+
+        return SIGN, IHMSF
+

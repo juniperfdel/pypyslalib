@@ -4,412 +4,698 @@ import os
 import re
 import random
 import sys
-from pathlib import Path
-from string import Template
 
-import autopep8
+from pathlib import Path
+
+import pyparsing as pp
+from pyparsing import ParseException, pyparsing_common as ppc
 from boltons.setutils import IndexedSet
 
-file_args = IndexedSet()
-known_arrs = IndexedSet()
+all_fns_info = {}
 converted = IndexedSet()
 inputted_files = IndexedSet()
-pyf_info = {}
 c_debug = False
 
 
-def ind_set_extend(ind_set, in_iter):
-    for item in in_iter:
-        ind_set.add(item)
+class ConverterFailure(Exception):
+    pass
 
 
-class Transformation:
-    def __init__(self, f_test, py_replace, priority_of=None):
-        self.f_t = f_test
-        self.py_r = py_replace
-        self.priority_of = priority_of
-
-    def __repr__(self):
-        return f"<{type(self)}: ({self.f_t}, {self.py_r})>"
-
-    def test(self, in_string):
-        global c_debug
-        in_string = in_string.strip()
-        i_t = bool(re.search(self.f_t, in_string))
-        if i_t and c_debug:
-            print(self.f_t, " : ", in_string)
-        return i_t
-
-    def replace(self, in_string):
-        return re.sub(self.f_t, self.py_r, in_string)
+class Singleton(object):
+    _instance = None
+    
+    def __new__(cls, *args, **kwargs):
+        if not isinstance(cls._instance, cls):
+            cls._instance = object.__new__(cls, *args, **kwargs)
+        return cls._instance
 
 
-class TemplateTransformation:
-    def __init__(self, f_test, py_replace):
-        self.f_t = Template(f_test)
-        self.py_r = Template(py_replace)
-        self.sub_dict = {}
-
-    def __setitem__(self, key, value):
-        self.sub_dict[key] = value
-
-    def test(self, in_string):
-        in_string = in_string.strip()
-        f_sub = self.f_t.substitute(**self.sub_dict)
-        return re.search(f_sub, in_string) is not None if in_string else False
-
-    def replace(self, in_string):
-        f_sub = self.f_t.substitute(**self.sub_dict)
-        r_sub = self.py_r.substitute(**self.sub_dict)
-        return re.sub(f_sub, r_sub, in_string)
-
-
-class DependT(Transformation):
-    def replace(self, in_string):
-        rv = super().replace(in_string)
-        depends_ = [
-            x.replace("sla", "").replace("_", "").lower().strip()
-            for x in rv.split(":")[1].strip().split(",")
-        ]
-        depends_ = [x for x in depends_ if (len(x) > 0) and (x not in converted)]
-        for x in depends_:
-            if x not in converted:
-                inputted_files.add(x)
-        return rv
-
-
-class FuncDefT(Transformation):
-    def replace(self, in_string):
-        global pyf_info
-        rv = super().replace(in_string)
-        match = re.search(r"sla_(\w+)\((.+)\)", rv)
-        fn_args = [x.strip() for x in match[2].split(",")]
-        ind_set_extend(file_args, fn_args)
-
-        call_fn = match[1].lower()
-        call_info = pyf_info[call_fn]
-        ind_set_extend(file_args, call_info["in"])
-        ind_set_extend(file_args, call_info["out"])
-        call_in = ["cls", *call_info["in"]]
-        fn_args_str = ",".join([x.strip() for x in call_in])
-        rv = re.sub(r"sla_(\w+)\((.+)\)", f"{call_fn}({fn_args_str})", rv)
-        return rv
-
-
-class FortranCallT(Transformation):
-    def replace(self, in_string):
-        global pyf_info
-        rv = super().replace(in_string)
-        match = re.search(r"cls.(\w+)\((.+)\)", rv)
-        if not match:
-            return rv
-        call_fn = match[1].lower()
-        if call_fn == "sleep":
-            return f"time.sleep({match[2]})"
-        call_fn = call_fn.replace("sla_", "")
-        call_info = pyf_info[call_fn]
-        call_in = call_info["in"]
-        call_out = call_info["out"]
-
-        call_fn_args = ",".join(
-            [x.strip() for x in match[2].split(",")[: (len(call_in) + 1)]]
+class FParser(Singleton):
+    def __init__(self):
+        self.var = ppc.identifier
+        self.sci_num_sep = pp.oneOf("E D", caseless=True)
+        self.num = pp.Combine(
+            (pp.Word(f"+-{pp.nums}", pp.nums) + pp.Opt(pp.Literal(".") + pp.Opt(pp.Word(pp.nums)))) +
+            pp.Opt(self.sci_num_sep + pp.Word(f"+-{pp.nums}", pp.nums))
         )
-        rv = f"{','.join(call_out)} = cls.{call_fn}({call_fn_args})"
-
-        new_dep = call_fn
-        if new_dep not in converted:
-            print("Adding Dependency ", new_dep)
-            inputted_files.add(new_dep)
-        return rv
-
-
-class FuncCallT(Transformation):
-    def replace(self, in_string):
-        rv = super().replace(in_string)
-        match = re.search(r"cls\.(\w+)\(", rv)
-
-        call_fn = match[1].lower()
-        rv = re.sub(
-            r"cls\.(\w+)\(",
-            f"cls.{call_fn}(",
-            rv,
+        self.var_num = (self.var | self.num)
+        
+        self.lpar = pp.Literal("(")
+        self.rpar = pp.Literal(")")
+        self.comma = pp.Literal(",")
+        self.str_def = pp.oneOf("' \"")
+        
+        # PEMDAS
+        self.pow = pp.oneOf("**")
+        self.mul_op = pp.oneOf("* /")
+        self.add_op = pp.oneOf("+ -")
+        
+        self.rel_op = pp.oneOf(".LT. .GT. .EQ. .LE. .GE. .NE.")
+        
+        self.comb_op = pp.oneOf(".AND. .OR. OR.")
+        
+        self.equal_op = pp.Literal("=")
+        
+        self.expr = pp.Forward()
+        self.atom = (
+                (self.var + self.lpar + pp.OneOrMore(self.expr + pp.Opt(self.comma)) + self.rpar) |
+                (self.num + pp.Opt(self.comma + self.expr)) |
+                (self.var + pp.Opt(self.comma + self.expr)) |
+                (self.lpar + pp.OneOrMore(self.expr + pp.Opt(self.comma)) + self.rpar) |
+                pp.Combine(self.str_def + pp.SkipTo(self.str_def).leave_whitespace() + self.str_def)
         )
-        return rv
+        
+        self.factor = pp.Forward()
+        self.factor << self.atom + pp.ZeroOrMore((self.pow + self.factor))
+        self.term = self.factor + pp.ZeroOrMore((self.mul_op + self.factor))
+        self.arith_expr = self.term + pp.ZeroOrMore((self.add_op + self.term))
+        self.relational = self.arith_expr + pp.ZeroOrMore((self.rel_op + self.arith_expr))
+        self.equal_terms = self.relational + pp.ZeroOrMore((self.comb_op + self.relational))
+        self.expr << self.equal_terms + pp.ZeroOrMore((self.equal_op + self.equal_terms))
+        
+        self.subroutine = pp.Keyword("SUBROUTINE") + self.var + pp.OneOrMore(self.expr + pp.Opt(","))
+        self.d_function = (pp.Keyword("REAL") | pp.Keyword("DOUBLE PRECISION") | pp.Keyword("INTEGER")) + \
+                          pp.Keyword("FUNCTION") + self.var + pp.OneOrMore(self.expr + pp.Opt(","))
+        
+        self.function = self.subroutine | self.d_function
+        
+        self.parameter = \
+            (
+                    pp.Keyword("PARAMETER") +
+                    pp.OneOrMore(self.expr + pp.Opt(","))
+            )
+        
+        self.call = (
+                pp.Keyword("CALL") +
+                self.var +
+                self.lpar +
+                pp.OneOrMore(self.expr + pp.Opt(",")) +
+                self.rpar
+        )
+        
+        self.i_for = (
+                pp.Keyword("DO") +
+                self.expr
+        )
+        
+        self.do_while = (
+                pp.Keyword("DO WHILE") +
+                self.expr
+        )
+        
+        self.end = \
+            (pp.Keyword("END IF") | pp.Keyword("END DO"))
+        
+        self.el_if = (
+            pp.Keyword("ELSE IF") + pp.Opt(self.lpar) + self.expr + pp.Opt(self.rpar + self.expr) + pp.Opt(
+            pp.Keyword("THEN"))
+        )
+        
+        self.else_t = pp.Keyword("ELSE")
+        
+        self.if_t = (
+                pp.Keyword("IF") +
+                pp.Opt(self.lpar) +
+                self.expr +
+                pp.Opt(self.rpar + self.expr) +
+                pp.Opt(pp.Keyword("THEN"))
+        )
+        
+        self.arr = (
+                pp.Keyword("DATA") +
+                pp.Opt(self.var_num) +
+                pp.Literal("/") + pp.OneOrMore(self.expr + pp.Opt(",")) + pp.Literal("/")
+        )
+        
+        self.int = (
+                pp.Keyword("INTEGER") +
+                pp.OneOrMore(self.expr + pp.Opt(","))
+        )
+        
+        self.char = (
+                pp.Keyword("CHARACTER") +
+                self.var + pp.Literal(r"*(*)")
+        )
+        
+        self.float = (
+                (pp.Keyword("REAL") | pp.Keyword("DOUBLE PRECISION")) +
+                pp.OneOrMore(self.expr + pp.Opt(","))
+        )
+        
+        self.implicit = (
+                pp.Keyword("IMPLICIT") +
+                pp.OneOrMore(self.expr + pp.Opt(","))
+        )
+        
+        self.comment = (
+                pp.Keyword(r"*") +
+                pp.SkipTo(pp.LineEnd()).leave_whitespace() +
+                pp.LineEnd()
+        )
+        
+        self.stmt = (
+                self.function.set_results_name("function") |
+                self.call.set_results_name("call") |
+                self.parameter.set_results_name("parameter") |
+                self.do_while.set_results_name("while") |
+                self.i_for.set_results_name("for") |
+                self.end.set_results_name("end") |
+                self.el_if.set_results_name("el_if") |
+                self.else_t.set_results_name("else") |
+                self.if_t.set_results_name("if") |
+                self.arr.set_results_name("arr") |
+                self.int.set_results_name("int") |
+                self.float.set_results_name("float") |
+                self.char.set_results_name("char") |
+                self.implicit.set_results_name("implicit") |
+                self.comment.set_results_name("comment") |
+                self.expr.set_results_name("expr")
+        )
 
 
-class ArrDefT(Transformation):
-    def replace(self, in_string):
-        rv = super().replace(in_string)
-        v_name, _ = rv.split("=", 1)
-        v_name = v_name.strip()
-        known_arrs.add(v_name)
-        return rv
+class TObject:
+    @staticmethod
+    def test_token(in_token, in_str):
+        try:
+            in_token.parse_string(in_str)
+            return True
+        except ParseException:
+            pass
+        return False
+    
+    @staticmethod
+    def get_arg_list(results, i_start):
+        r_len = len(results)
+        end_ind = 0
+        
+        lvl = 0
+        commas = {0: [], 1: []}
+        if results[i_start] != "(":
+            raise ValueError("i_start must be the index of the starting parethesis for parsing!")
+        for kk in range(i_start, r_len):
+            if results[kk] == "(":
+                lvl += 1
+            if results[kk] == ")":
+                lvl -= 1
+                if lvl == 0:
+                    end_ind = kk
+                    break
+            if results[kk] == ",":
+                try:
+                    commas[lvl].append(kk)
+                except KeyError:
+                    commas[lvl] = [kk]
+        return end_ind, commas
+    
+    @staticmethod
+    def add_dep(fn_name):
+        global converted, inputted_files
+        if fn_name not in converted:
+            inputted_files.add(fn_name)
+    
+    @classmethod
+    def test(cls, inst, i_type, results, ii, **kwargs):
+        raise NotImplementedError
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii, **kwargs):
+        raise NotImplementedError
 
 
-class ArrGetSetT(Transformation):
-    def replace(self, in_string):
-        rv = super().replace(in_string)
-        if matches := re.findall(r"(\w+\s*)\[([\-\s\d]+)]", rv):
-            for match in matches:
-                arr_name = match[0].strip()
-                arr_ind = int(match[1])
-                rv = rv.replace(f"{match[0]}[{match[1]}]", f"{arr_name}[{arr_ind}]")
-                known_arrs.add(arr_name)
-        if "=" in rv:
-            v_assign, v_value = rv.split("=", 1)
-            v_value = re.sub(r"([ ,\b])\+(\d)", r"\g<1>\g<2>", v_value.strip())
-            if "=" in v_value:
-                v_value = re.sub(r",(?=\s+\w+\[[\-\s\d]+]\s+=)", "; ", v_value)
-
-                t_l, n_l = v_value.split(";", 1)
-                t_l = t_l.strip()
-                v_value = f"{t_l};{n_l}"
-            v_value = v_value.strip()
-            v_assign = v_assign.strip()
-            rv = f"{v_assign} = {v_value}"
-        return rv
+class TFn(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return (results[ii] in inst.fns) and (ii < len(results) - 1) and (results[ii+1] == "(")
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        results[ii] = inst.fns[results[ii]]
 
 
-class LowerT(Transformation):
-    def replace(self, in_string):
-        m = re.search(self.f_t, in_string)
-        rv = super().replace(in_string)
-        for m_group in m.groups():
-            rv = rv.replace(m_group, m_group.lower())
-        return rv
+class TBadFn(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return (results[ii] in inst.bad_fns) and (ii < len(results) - 1) and (results[ii + 1] == "(")
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        clse_par, _ = cls.get_arg_list(results, ii+1)
+        results[ii] = ""
+        results[ii+1] = ""
+        results[clse_par] = ""
+
+class TKeyword(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return results[ii] in inst.kywds
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        results[ii] = inst.kywds[results[ii]]
+
+class TNum(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return cls.test_token(inst.parse.num, results[ii])
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        results[ii] = results[ii].replace("D", "e").replace("E", "e")
 
 
-class ParameterT(Transformation):
-    def replace(self, in_string):
-        rv = super().replace(in_string)
-        if "(" in rv:
-            rv = re.sub(r"\),?", "));", rv.replace("(", "= np.zeros(("))
+class TForEq(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return i_type == "for" and results[ii] == "="
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii, r_len=None):
+        results[ii] = " in range("
+        for jj in range(ii + 1, r_len, 2):
+            if cls.test_token(inst.parse.num, results[jj]):
+                results[jj] = str(int(results[jj]) - 1)
+        results[r_len - 1] += "):"
+
+
+class TArrDef(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return i_type in ("int", "float") and results[ii] == "(" and cls.test_token(inst.parse.var, results[ii - 1])
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii, r_len=None):
+        if r_len is None:
+            r_len = len(results)
+        dtype_stmt = ", dtype=int" if i_type == "int" else ", dtype=float"
+
+        inst.def_arrays.add(results[ii - 1])
+        inst.arr_decl = True
+
+
+        clse_par, cmmas_btwn = cls.get_arg_list(results, ii)
+        if clse_par > 0:
+            l_args = len(cmmas_btwn[1])
+            if l_args > 1:
+                results[ii] = " = np.zeros(("
+                results[clse_par] = f"){dtype_stmt})"
+            else:
+                results[ii] = " = np.zeros("
+                results[clse_par] = f"{dtype_stmt})"
+            if (clse_par + 1) < r_len and results[clse_par + 1] == ",":
+                results[clse_par + 1] = ";"
+
+
+class TVarDef(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii, r_len=None):
+        return i_type in ("int", "float") and ((ii == (r_len - 1)) or (results[ii + 1] == ",")) and cls.test_token(
+            inst.parse.var, results[ii]) and (not inst.arr_decl)
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        inst.def_vars.add(results[ii])
+        if results[ii] not in inst.func_ins:
+            results[ii] += " = 0" if i_type == "int" else " = 0."
+            try:
+                results[ii + 1] = ";"
+            except IndexError:
+                pass
         else:
-            rv = rv.replace(",", ";")
-        return rv
+            try:
+                results[ii] = ""
+                results[ii + 1] = ""
+            except IndexError:
+                pass
 
 
-class BoolT(Transformation):
-    def replace(self, in_string):
-        return in_string.replace(".TRUE.", "True").replace(".FALSE.", "False")
+class TImpct(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii, r_len=None):
+        return i_type == "implicit"
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        results[ii] = ""
 
 
-line_replace = {
-    "function": FuncDefT(
-        r"SUBROUTINE ?(\w+) ?\(([ A-Za-z0-9,]+)\)",
-        r"import numpy as np\n\n\nclass SLALib:\n\t@classmethod\n\tdef \g<1>(cls, \g<2>):",
-    ),
-    "f_function": FuncDefT(
-        r".+FUNCTION (\w+) ?\(([ A-Za-z0-9,]+)\)",
-        r"import numpy as np\n\n\nclass SLALib:\n\t@classmethod\n\tdef \g<1>(cls, \g<2>):",
-    ),
-    "dependencies": DependT(r"^\s*\*+\s*Called:(.+)", r"# Depends:\g<1>"),
-    "comment": Transformation(r"^\*+\s*(.*)", r"# \g<1>"),
-    "call": FortranCallT(r"CALL (\w+) ?\((.+)\)", r"cls.\g<1>(\g<2>)"),
-    "do": Transformation(
-        r"DO ([ \w]+)=([ \w\-]+),([ \w,\-]+)", r"for \g<1> in range(\g<2>, \g<3>):"
-    ),
-    "while": Transformation(r"DO WHILE ?(.+)", r"while \g<1>:"),
-    "end": Transformation(r"END ?(DO|IF)?", r""),
-    "elif": Transformation(r"ELSE IF(.+)(?:THEN)", r"elif \g<1>:", ("if", "else")),
-    "else": Transformation(r"ELSE", r"else:"),
-    "if": Transformation(r"IF(.+)\sTHEN", r"if\g<1>:"),
-    "lt": Transformation(r" ?\.LT\. ?", r" < "),
-    "gt": Transformation(r" ?\.GT\. ?", r" > "),
-    "eq": Transformation(r" ?\.EQ\. ?", r" == "),
-    "le": Transformation(r" ?\.LE\. ?", r" <= "),
-    "ge": Transformation(r" ?\.GE\. ?", r" >= "),
-    "neq": Transformation(r" ?\.NE\. ?", r" != "),
-    "and": Transformation(r" ?\.AND\. ?", r" and "),
-    "or": Transformation(r" ?\.OR\. ?", r" or "),
-    "anint": Transformation(r"(\W)ANINT(\W)", r"\g<1>np.rint\g<2>"),
-    "dble": Transformation(r"(\W)DBLE(\W)", "\g<1>\g<2>"),
-    "sqrt": Transformation(r"SQRT\(", r"np.sqrt("),
-    "sign": Transformation(r"SIGN\(", r"np.sign("),
-    "nint": Transformation(r"NINT\(", r"np.rint("),
-    "abs": Transformation(r"ABS\(", r"np.abs("),
-    "cos": Transformation(r"COS\(", r"np.cos("),
-    "sin": Transformation(r"SIN\(", r"np.sin("),
-    "tan": Transformation(r"TAN\(", r"np.tan("),
-    "atan2": Transformation(r"ATAN2\(", r"np.arctan2("),
-    "mod": Transformation(r"MOD\(", r"np.mod("),
-    "max": Transformation(r"MAX\(", r"np.maximum("),
-    "min": Transformation(r"MIN\(", "np.minimum("),
-    "arr_set_2d": ArrGetSetT(
-        r"(?<=DATA)(.*)\((\w+)\((\w+),([\-\s\d]+)\) ?, ?(\w+)=([\-\+\d,\s]+)\)\/([^\/]+)\/",
-        r"\g<1> \g<2>[\g<4>] = [\g<7>]",
-    ),
-    "arr_def": ArrDefT(r"(?<=DATA) +(\w+) +/ ([^\/]+) /", r" \g<1> = [\g<2>]"),
-    "arr_set_raw": ArrGetSetT(
-        r"(?<=DATA) ?(\w+) ?\(([\-\s\d]+)\) ?\/ ?([^\/]+) ?\/",
-        r" \g<1>[\g<2>] = \g<3>",
-    ),
-    "arr_set": ArrGetSetT(r"(\w+) ?\(([\-\s\d]+)\) ?= ?", r"\g<1>[\g<2>] = "),
-    "arr_get": ArrGetSetT(
-        r"(\w+) ?= ?(\w+) ?\(([A-Za-z0-9\- ]+)\)", r"\g<1> = \g<2>[\g<3>]"
-    ),
-    "implicit_none": Transformation("IMPLICIT NONE", ""),
-    "parameter": ParameterT(
-        r"(DOUBLE PRECISION|INTEGER|REAL|PARAMETER) ?\(?(.+)\)?\s*$",
-        r"\g<2>",
-        ("type_redef", "z"),
-    ),
-    "double_prec_bare": Transformation(r"DOUBLE PRECISION ([^=]+)\s*$", r"", ("parameter", "z")),
-    "int_bare": Transformation(r"INTEGER ([^=]+)\s*$", r"", ("parameter", "z")),
-    "real_bare": Transformation(r"REAL ([^=]+)\s*$", r"", ("parameter", "z")),
-    "data_def": Transformation(r"(DATA)", r""),
-    "type_redef": LowerT(r"(INTEGER|REAL|FLOAT)\(", r"\g<1>("),
-    "double_redef": Transformation("DBLE\(", "float("),
-    "bool_constant": BoolT(r"\.(TRUE|FALSE)\.", r"\g<1>"),
-    "double_constant": Transformation(
-        r"(\d+)(?:D|E)(-?)\+?0*(\d+)", r"\g<1>e\g<2>\g<3>"
-    ),
-    "file_return": TemplateTransformation(r"^\s*sla_$cfn\s+=\s+(.+)", r"return \g<1>"),
-    "function_call": FuncCallT(r"sla_(\w+) ?\((.+)\)", r"cls.\g<1>(\g<2>)"),
-    "sl_if": Transformation(
-        r"(?<!ELSE )IF\s?\((.+)\)\s?(.+)\s?=\s?(.+)",
-        r"\g<2> = \g<3> if (\g<1>) else \g<2>",
-    ),
-}
-
-# (Local Change, Global Change)
-indent_change = {
-    "f_function": (0, 2),
-    "function": (0, 2),
-    "do": (0, 1),
-    "while": (0, 1),
-    "if": (0, 1),
-    "else": (-1, 0),
-    "elif": (-1, 0),
-    "end": (0, -1),
-}
+class TStrDef(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii, r_len=None):
+        return i_type == "char" and results[ii] == "*(*)"
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        results[ii] = "= \"\""
 
 
-def append_or_replace(in_list, in_index, in_item):
-    if in_index < len(in_list):
-        in_list[in_index] = in_item
-    else:
-        in_list.append(in_item)
+class TEnd(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return i_type == "expr" and results[ii] == "END"
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        results[ii] = f"return {','.join(inst.func_outs)}"
 
 
-def first_pass(in_file_lines):
-    output_lines = []
-    line_index = 0
-    while line_index < len(in_file_lines):
-        current_line = in_file_lines[line_index].strip()
-        if re.search(r"^:\s{2,}", current_line) is not None:
-            prev_line = in_file_lines[line_index - 1].strip()
-            this_line = re.sub(r"^:\s{2,}", "", current_line).strip()
-            in_file_lines[line_index - 1] = (prev_line + this_line).strip()
-            in_file_lines[line_index] = ""
-            line_index -= 1
-            continue
-        append_or_replace(output_lines, line_index, current_line)
-        line_index += 1
-
-    return output_lines
+class TSingleLineIf(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return i_type == "if" and results[ii] == ")" and (":" not in results[ii:])
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        inst.wc = 0
+        rv = [*results[ii + 1:], *results[:ii + 1]]
+        rv[-1] += f" else {rv[0]}"
+        return rv, len(results)
 
 
-def clean_fn_arr(in_olines):
-    non_ascii = r"[ *+=\-\)\(\\/,_	]"
-    find_args = r"\([_0-9A-Za-z]+\)"
-    while known_arrs:
-        n_arg = known_arrs.pop()
-        for oln, ll in in_olines.items():
-            search_str = f"{non_ascii}?{n_arg}{find_args}"
-            for x in re.findall(search_str, ll, re.M):
-                n_x = x.replace("(", "[").replace(")", "]")
-                if matches := re.search(r"\[(\d+)\]", n_x):
-                    arr_ind = int(matches[1]) - 1
-                    n_x = n_x.replace(matches[0], f"[{arr_ind}]")
-                ll = ll.replace(x, n_x)
-            in_olines[oln] = ll
+class TSlaCheck(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii, r_len=None):
+        return i_type == "expr" and cls.test_token(inst.parse.var, results[ii]) and "sla_" in results[ii]
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        fn_name = results[ii].replace("sla_", "").lower()
+        results[ii] = f"cls.{fn_name}"
 
-def clean_fn_args(in_olines):
-    global file_args
-    non_ascii = r"[ *+=\-\)\(\\/,_	]"
-    r_b = r"^"
-    r_e = r"$"
-    while file_args:
-        n_arg = file_args.pop().strip()
-        for oln, ll in in_olines.items():
-            for nu_arg in [n_arg, n_arg.lower(), n_arg.upper()]:
-                for search_str in [
-                    f"{non_ascii}{nu_arg}{non_ascii}",
-                    f"{r_b}{nu_arg}{non_ascii}",
-                    f"{non_ascii}{nu_arg}{r_e}",
-                ]:
-                    for x in re.findall(search_str, ll, re.M):
-                        n_x = x.replace(nu_arg, n_arg.lower())
-                        ll = ll.replace(x, n_x)
-            in_olines[oln] = ll
 
-def clean_file(in_fn_args, fn_returns, in_file_name, in_file_lines):
-    global file_args
-    global known_arrs
-    global c_debug
-    n_lines = len(in_file_lines)
-    l_list = [f_line.strip() for f_line in in_file_lines]
-    t_list = [list() for _ in range(n_lines)]
-    file_args = IndexedSet(in_fn_args)
-    known_arrs = IndexedSet()
+class TArrUse(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return (results[ii] == "(") and cls.test_token(inst.parse.var, results[ii - 1]) and (
+                results[ii - 1] in inst.def_arrays)
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        clse_par, cmmas_btwn = cls.get_arg_list(results, ii)
+        results[ii] = "["
+        if clse_par > 0:
+            results[clse_par] = "]"
 
-    line_replace["file_return"]["cfn"] = in_file_name.upper()
-    for ln in range(n_lines):
-        ll = l_list[ln]
-        for tk, tt in line_replace.items():
-            if tt.test(ll) and (
-                tk != "function_call"
-                or "f_function" not in t_list[ln]
-                and "function" not in t_list[ln]
-            ):
-                t_list[ln].append(tk)
 
-    if c_debug:
-        print("====================================")
+class TCallStmt(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return \
+            i_type == "call" and \
+            results[ii] == "(" and \
+            cls.test_token(inst.parse.var, results[ii - 1]) and \
+            results[ii - 1].startswith("sla_")
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        fn_name = results[ii - 1].replace("sla_", "").lower()
+        cls.add_dep(fn_name)
+        clse_par, cmmas_btwn = cls.get_arg_list(results, ii)
+        tl_cs = cmmas_btwn[1]
+        results[ii - 1] = f"cls.{fn_name}"
+        
+        in_args = len(all_fns_info[fn_name]['in'])
+        t_args = len(tl_cs) + 1
+        split_loc = clse_par if (t_args == 1) or (t_args <= in_args) else tl_cs[in_args - 1]
+        
+        out_args = results[split_loc+1:clse_par]
+        call_and_in_args = results[:split_loc]
+        after_call = results[clse_par:] if clse_par <= (len(results) - 1) else []
+        call_and_in_args[ii - 1] = f" = {call_and_in_args[ii - 1]}"
+        return out_args + call_and_in_args + after_call, len(results)
 
-    o_lines = []
-    cur_ind_lvl = 0
-    for l_num, l_trans in enumerate(t_list):
-        tf_line = l_list[l_num]
-        destroy_ts = set()
-        for tk in l_trans:
-            if line_replace[tk].priority_of is not None:
-                for p_of in line_replace[tk].priority_of:
-                    destroy_ts.add(p_of)
+
+class TParamFix(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return i_type == "parameter" and results[ii] == "("
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        clse_par, cmmas_btwn = cls.get_arg_list(results, ii)
+        results[ii] = ""
+        results[clse_par] = ""
+        for ci in cmmas_btwn[1]:
+            results[ci] = ";"
+        return results, len(results)
+
+
+class TFuncDef(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return i_type == "function" and results[ii] == "(" and cls.test_token(inst.parse.var, results[ii - 1]) and \
+               results[ii - 1].startswith("sla_")
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        fn_name = results[ii - 1].replace("sla_", "").lower()
+        cls.add_dep(fn_name)
+        clse_par, cmmas_btwn = cls.get_arg_list(results, ii)
+        in_args = len(all_fns_info[fn_name]['in'])
+        if len(cmmas_btwn[1]) == 0:
+            f_cl, arg_cl = clse_par, clse_par
+        else:
+            ind_a = in_args - 1
+            f_cl, arg_cl = cmmas_btwn[1][0], cmmas_btwn[1][ind_a]
+        
+        inst.func_outs = ("".join(results[arg_cl + 1: clse_par])).split(",")
+        inst.func_ins = ("".join(results[f_cl - 1:arg_cl + 1])).split(",")
+        inst.func_ins = [x for x in inst.func_ins if len(x) > 0]
+        
+        rv = [""]
+        rv[0] = f"""
+import numpy as np
+
+class SLALib:
+	@classmethod
+	def {fn_name} (cls, {", ".join(inst.func_ins)}):"""
+        return rv, len(results)
+
+
+class FTransformer:
+    stmts = {
+        "FUNCTION": "",
+        "SUBROUTINE": "",
+        "PARAMETER": "",
+        "CALL": "",
+        "DO": "for ",
+        "DO WHILE": "while ",
+        "END IF": "",
+        "END DO": "",
+        "ELSE IF": "elif ",
+        "ELSE": "else:",
+        "IF": "if",
+        "DATA": "",
+        "INTEGER": "",
+        "REAL": "",
+        "CHARACTER": "",
+        "DOUBLE PRECISION": "",
+        "IMPLICIT": "",
+        "*": "#"
+    }
+    
+    kywds = {
+        ".LT.": "<",
+        ".GT.": ">",
+        ".EQ.": "==",
+        ".LE.": "<=",
+        ".GE.": ">=",
+        ".NE.": "!=",
+        ".AND.": "and",
+        ".OR.": "or",
+        "AND.": "or",
+        "OR.": "or",
+        "THEN": ":",
+        ".TRUE.": "True",
+        ".FALSE.": "False",
+        "REAL": "",
+    }
+    
+    fns = {
+        "ANINT": "np.rint",
+        "SQRT": "np.sqrt",
+        "SIGN": "np.sign",
+        "NINT": "np.rint",
+        "AINT": "np.trunc",
+        "ABS": "np.abs",
+        "COS": "np.cos",
+        "SIN": "np.sin",
+        "TAN": "np.tan",
+        "ATAN2": "np.arctan2",
+        "MOD": "np.mod",
+        "MAX": "np.maximum",
+        "MIN": "np.minimum",
+    }
+    
+    bad_fns = {
+        "DBLE"
+    }
+    
+    # (Local Change, Global Change)
+    indent_change = {
+        "function": (0, 2),
+        "for": (0, 1),
+        "while": (0, 1),
+        "if": (0, 1),
+        "else": (-1, 0),
+        "el_if": (-1, 0),
+        "end": (0, -1),
+    }
+    
+    def __init__(self):
+        self.def_arrays = set()
+        self.def_vars = set()
+        
+        self.func_ins = set()
+        self.func_outs = set()
+        
+        self.parse = FParser()
+        
+        self.ind_lvl = 0
+        self.lc = 0
+        self.wc = 0
+        
+        self.arr_decl = False
+    
+    def reset(self):
+        self.def_arrays = set()
+        self.def_vars = set()
+        
+        self.func_ins = set()
+        self.func_outs = set()
+        
+        self.parse = FParser()
+        
+        self.ind_lvl = 0
+        self.lc = 0
+        self.wc = 0
+        
+        self.arr_decl = False
+    
+    def eval(self, i_string, parse_all=False):
+        global c_debug
+        if not i_string:
+            return "\t" * self.ind_lvl
+        
+        try:
+            results = self.parse.stmt.parse_string(i_string, parse_all=parse_all)
+        except ParseException as e:
+            raise ConverterFailure(f"Failed to convert {i_string}")
+        
+        i_type = list(results.as_dict().keys())[0]
+        results = results.as_list()
+        if results[0] in self.stmts:
+            results[0] = self.stmts[results[0]]
+        
+        self.arr_decl = False
+        
+        r_len = len(results)
+        self.lc, self.wc = self.indent_change.get(i_type, (0, 0))
         if c_debug:
-            print(tf_line)
-            print(l_trans)
-            print(destroy_ts)
-        local_change = 0
-        global_change = 0
-        for tk in l_trans:
-            if tk in destroy_ts:
-                continue
-            l_cha, g_cha = indent_change.get(tk, (0, 0))
-            local_change += l_cha
-            global_change += g_cha
-            tf_line = line_replace[tk].replace(tf_line)
-        tf_line = ("\t" * (cur_ind_lvl + local_change)) + tf_line.strip()
-        o_lines.append(tf_line)
-        cur_ind_lvl += global_change
+            print("===================")
+            print(i_string)
+            print(i_type, " ;;;; ", results)
+        for ii in range(r_len):
+            
+            # Transform Functions
+            if TFn.test(self, i_type, results, ii):
+                TFn.transform(self, i_type, results, ii)
 
-    r_str = ",".join(fn_returns)
-    if "sla_" not in r_str:
-        o_lines.append(f"\t\treturn {','.join(fn_returns)}")
-        ind_set_extend(file_args, fn_returns)
+            # Remove Converting/Fortran-specific Functions
+            if TBadFn.test(self, i_type, results, ii):
+                TBadFn.transform(self, i_type, results, ii)
 
-    o_lines = dict(enumerate(o_lines))
-    clean_fn_args(o_lines)
-    clean_fn_arr(o_lines)
+            # Transform Keywords
+            if TKeyword.test(self, i_type, results, ii):
+                TKeyword.transform(self, i_type, results, ii)
+            
+            # Transform Numbers
+            if TNum.test(self, i_type, results, ii):
+                TNum.transform(self, i_type, results, ii)
+            
+            # Transform equal inside for into in range
+            if TForEq.test(self, i_type, results, ii):
+                TForEq.transform(self, i_type, results, ii, r_len)
+            
+            # Transform fortran array declarations
+            if TArrDef.test(self, i_type, results, ii):
+                TArrDef.transform(self, i_type, results, ii, r_len)
+            
+            # Recognize fortran variable declarations
+            if TVarDef.test(self, i_type, results, ii, r_len):
+                TVarDef.transform(self, i_type, results, ii)
+            
+            # Destroy IMPLICIT Statements
+            if TImpct.test(self, i_type, results, ii):
+                TImpct.transform(self, i_type, results, ii)
+            
+            # Recognize arrays being used in code
+            if TArrUse.test(self, i_type, results, ii):
+                TArrUse.transform(self, i_type, results, ii)
+            
+            # Build the return statement
+            if TEnd.test(self, i_type, results, ii):
+                TEnd.transform(self, i_type, results, ii)
+            
+            # Fix variables with sla_ in them
+            if TSlaCheck.test(self, i_type, results, ii):
+                TSlaCheck.transform(self, i_type, results, ii)
+        
+            # Fix the Fortran CHARACTER declaration
+            if TStrDef.test(self, i_type, results, ii):
+                TStrDef.transform(self, i_type, results, ii)
+        
+        # Second Pass to deal with overall restructuring of the code
+        r_len = len(results)
+        ii = 0
+        while ii < r_len:
+            # Transform CALL to classmethod calls
+            if TCallStmt.test(self, i_type, results, ii):
+                results, ii = TCallStmt.transform(self, i_type, results, ii)
+            
+            # Build the function definition
+            elif TFuncDef.test(self, i_type, results, ii):
+                results, ii = TFuncDef.transform(self, i_type, results, ii)
+            
+            # Fix single line if statements
+            elif TSingleLineIf.test(self, i_type, results, ii):
+                results, ii = TSingleLineIf.transform(self, i_type, results, ii)
+            
+            # Remove outermost parenthesis in parameter statements
+            elif TParamFix.test(self, i_type, results, ii):
+                results, ii = TParamFix.transform(self, i_type, results, ii)
+            ii += 1
+        
+        results = ("\t" * (self.ind_lvl + self.lc)) + " ".join([xx.strip() for xx in results if len(xx) > 0])
+        self.ind_lvl += self.wc
 
-    return list(o_lines.values())
+        if c_debug:
+            print(results)
+        return results
+
+
+def remove_newline_op(in_file_lines):
+    in_file_str = "\n".join(in_file_lines)
+    in_file_str = re.sub(r"[\n\t\r ]+:[\n\t\r ]+", "", in_file_str).strip()
+    return in_file_str.splitlines(False)
+
+
+def clean_file(in_file_lines):
+    f_trans = FTransformer()
+    f_trans.reset()
+    
+    cleaned_file = []
+    for ll in in_file_lines:
+        if len(ll) < 1:
+            cleaned_file.append("")
+        rr = f_trans.eval(ll)
+        cleaned_file.append(rr)
+    return cleaned_file
 
 
 def parse_pyf():
     if Path("parsed_pyf.json").exists():
         return json.load(open("parsed_pyf.json"))
-
+    
     in_pyf = (Path("pyslalib") / "slalib.pyf").resolve().open("r")
     fn_name = ""
     fn_info = {}
@@ -439,16 +725,11 @@ def parse_pyf():
 
 
 def main():
-    global file_args
-    global known_arrs
-    global pyf_info
-    global converted
-    global inputted_files
-    global c_debug
-
+    global all_fns_info, c_debug, converted, inputted_files
+    
     converted_path = Path("converted")
     converted_path.mkdir(parents=True, exist_ok=True)
-    pyf_info = parse_pyf()
+    all_fns_info = parse_pyf()
     parser = argparse.ArgumentParser(
         description="Format fortran in SLALib to nearly python"
     )
@@ -462,57 +743,53 @@ def main():
     )
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--random", action="store_true")
-
+    
     parsed_args = parser.parse_args()
-
+    
     c_debug = parsed_args.debug
-
+    
     with open("pypyslalib.py", "r") as fp:
         ff = fp.read()
         converted = IndexedSet(re.findall("def (\\w+)", ff))
-
+    
     print(len(converted), " functions have been converted previously")
     inputted_files = IndexedSet(parsed_args.in_file)
     file_list = IndexedSet([x.stem.lower() for x in Path("pyslalib").glob("*.f")])
     if parsed_args.random:
         inputted_files.add(random.choice(file_list - converted))
-
+    
     inputted_files = inputted_files - converted
-
+    
     with open("internal_license.txt", "r") as fp:
         inline_license = [x.strip() for x in fp.read().strip().split(";;;;")]
-
+    
     n_files_convert = 0
     while inputted_files and parsed_args.limit:
         in_fn = inputted_files.pop()
-        if in_fn not in file_list:
-            converted.add(in_fn)
+        if (in_fn not in file_list) or (in_fn in converted):
             continue
-        in_fpa = Path("pyslalib") / f"{in_fn}.f"
-
-        with open(in_fpa, "r") as if_fp:
-            print("----------------------")
-            print("converting ", in_fpa)
-            file_lines = if_fp.read().splitlines()
-
-            file_lines = first_pass(file_lines)
-            file_lines = clean_file(
-                pyf_info[in_fn]["in"], pyf_info[in_fn]["out"], in_fn, file_lines
-            )
-
-            final_file_str = "\n".join(file_lines)
-            final_file_str = autopep8.fix_code(
-                final_file_str, options={"aggressive": 3}
-            )
-            for il in inline_license:
-                final_file_str = final_file_str.replace(il, "# ")
-            ou_fpa = Path("converted") / f"{in_fn}.py"
-            with open(ou_fpa, "w") as cp_fp:
-                cp_fp.write(final_file_str)
-            try:
-                os.system(f"{sys.executable} -m black {ou_fpa}")
-            except OSError:
-                pass
+        
+        file_lines = (Path("pyslalib") / f"{in_fn}.f").resolve().read_text().splitlines()
+        print("----------------------")
+        print("converting ", in_fn)
+        
+        file_lines = remove_newline_op(file_lines)
+        file_lines = clean_file(file_lines)
+        
+        final_file_str = "\n".join(file_lines)
+        
+        for il in inline_license:
+            final_file_str = final_file_str.replace(il, "# ")
+        ou_fpa = Path("converted") / f"{in_fn}.py"
+        
+        with open(ou_fpa, "w") as cp_fp:
+            cp_fp.write(final_file_str)
+        
+        try:
+            os.system(f"{sys.executable} -m black {ou_fpa}")
+        except OSError:
+            pass
+        
         converted.add(in_fn)
         n_files_convert += 1
         if -1 < parsed_args.limit <= n_files_convert:
