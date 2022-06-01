@@ -4,3 +4,7 @@ converted/*
 __pycache__
 *.bak
 Pipfile.lock
+sandbox
+sandbox/*
+pyslalib
+pyslalib/*
