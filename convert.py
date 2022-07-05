@@ -126,20 +126,21 @@ class FParser(Singleton):
         self.equal_terms = self.relational + pp.ZeroOrMore((self.comb_op + self.relational))
         self.expr << self.equal_terms + pp.ZeroOrMore((self.equal_op + self.equal_terms))
         
-        self.subroutine = pp.Keyword("SUBROUTINE") + self.var + pp.OneOrMore(self.expr + pp.Opt(","))
-        self.d_function = (pp.Keyword("REAL") | pp.Keyword("DOUBLE PRECISION") | pp.Keyword("INTEGER")) + \
-                          pp.Keyword("FUNCTION") + self.var + pp.OneOrMore(self.expr + pp.Opt(","))
+        CK = pp.CaselessKeyword
+        self.subroutine = CK("SUBROUTINE") + self.var + pp.OneOrMore(self.expr + pp.Opt(","))
+        self.d_function = (CK("REAL") | CK("DOUBLE PRECISION") | CK("INTEGER")) + \
+                          CK("FUNCTION") + self.var + pp.OneOrMore(self.expr + pp.Opt(","))
         
         self.function = self.subroutine | self.d_function
         
         self.parameter = \
             (
-                    pp.Keyword("PARAMETER") +
+                    CK("PARAMETER") +
                     pp.OneOrMore(self.expr + pp.Opt(","))
             )
         
         self.call = (
-                pp.Keyword("CALL") +
+                CK("CALL") +
                 self.var +
                 self.lpar +
                 pp.OneOrMore(self.expr + pp.Opt(",")) +
@@ -147,56 +148,56 @@ class FParser(Singleton):
         )
         
         self.i_for = (
-                pp.Keyword("DO") +
+                CK("DO") +
                 self.expr
         )
         
         self.do_while = (
-                pp.Keyword("DO WHILE") +
+                CK("DO WHILE") +
                 self.expr
         )
         
         self.end = \
-            (pp.Keyword("END IF") | pp.Keyword("END DO"))
+            (CK("END IF") | CK("END DO"))
         
         self.el_if = (
-            pp.Keyword("ELSE IF") + pp.Opt(self.lpar) + self.expr + pp.Opt(self.rpar + self.expr) + pp.Opt(
-            pp.Keyword("THEN"))
+            CK("ELSE IF") + pp.Opt(self.lpar) + self.expr + pp.Opt(self.rpar + self.expr) + pp.Opt(
+            CK("THEN"))
         )
         
-        self.else_t = pp.Keyword("ELSE")
+        self.else_t = CK("ELSE")
         
         self.if_t = (
-                pp.Keyword("IF") +
+                CK("IF") +
                 pp.Opt(self.lpar) +
                 self.expr +
                 pp.Opt(self.rpar + self.expr) +
-                pp.Opt(pp.Keyword("THEN"))
+                pp.Opt(CK("THEN"))
         )
         
         self.arr = (
-                pp.Keyword("DATA") +
+                CK("DATA") +
                 pp.Opt(self.var_num) +
                 pp.Literal("/") + pp.OneOrMore(self.expr + pp.Opt(",")) + pp.Literal("/")
         )
         
         self.int = (
-                pp.Keyword("INTEGER") +
+                CK("INTEGER") +
                 pp.OneOrMore(self.expr + pp.Opt(","))
         )
         
         self.char = (
-                pp.Keyword("CHARACTER") +
+                CK("CHARACTER") +
                 self.var + pp.Literal(r"*(*)")
         )
         
         self.float = (
-                (pp.Keyword("REAL") | pp.Keyword("DOUBLE PRECISION")) +
+                (CK("REAL") | CK("DOUBLE PRECISION")) +
                 pp.OneOrMore(self.expr + pp.Opt(","))
         )
         
         self.implicit = (
-                pp.Keyword("IMPLICIT") +
+                CK("IMPLICIT") +
                 pp.OneOrMore(self.expr + pp.Opt(","))
         )
         
@@ -398,7 +399,6 @@ class TStrDef(TObject):
     def transform(cls, inst, i_type, results, ii):
         results[ii] = "= \"\""
 
-
 class TEnd(TObject):
     @classmethod
     def test(cls, inst, i_type, results, ii):
@@ -408,6 +408,15 @@ class TEnd(TObject):
     def transform(cls, inst, i_type, results, ii):
         results[ii] = f"return {','.join(inst.func_outs)}"
 
+class TFuncReturn(TObject):
+    @classmethod
+    def test(cls, inst, i_type, results, ii):
+        return i_type == "expr" and len(inst.func_name) > 0 and results[ii] == inst.func_name and results[ii + 1] == "="
+    
+    @classmethod
+    def transform(cls, inst, i_type, results, ii):
+        results[ii] = "return"
+        results[ii + 1] = ""
 
 class TSingleLineIf(TObject):
     @classmethod
@@ -531,6 +540,7 @@ class TFuncDef(TObject):
         inst.func_outs = ("".join(results[arg_cl + 1: clse_par])).split(",")
         inst.func_ins = ("".join(results[f_cl - 1:arg_cl + 1])).split(",")
         inst.func_ins = [x for x in inst.func_ins if len(x) > 0]
+        inst.func_name = fn_name
         
         rv = [""]
         rv[0] = f"""
@@ -617,6 +627,7 @@ class FTransformer:
         self.def_arrays = set()
         self.def_vars = set()
         
+        self.func_name = ""
         self.func_ins = set()
         self.func_outs = set()
         
