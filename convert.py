@@ -704,9 +704,13 @@ class FTransformer:
             if TArrUse.test(self, i_type, results, ii):
                 TArrUse.transform(self, i_type, results, ii)
             
-            # Build the return statement
+            # Build the return statement if using the END keyword
             if TEnd.test(self, i_type, results, ii):
                 TEnd.transform(self, i_type, results, ii)
+	    
+	    # Build the return statement if using the <function name> = ... syntax
+            if TFuncReturn.test(self, i_type, results, ii):
+                TFuncReturn.transform(self, i_type, results, ii)
             
             # Fix variables with sla_ in them
             if TSlaCheck.test(self, i_type, results, ii):
